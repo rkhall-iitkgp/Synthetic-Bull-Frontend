@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>High-Frequency Trading Simulator</title>
+    <style>
+        body { font-family: monospace; background-color: #121212; color: #00ff00; padding: 20px; }
+        .container { display: flex; gap: 20px; }
+        .panel { border: 1px solid #00ff00; padding: 15px; flex: 1; min-height: 300px; }
+        h3 { margin-top: 0; border-bottom: 1px solid #00ff00; padding-bottom: 5px; }
+        input, select, button { background: #222; color: #00ff00; border: 1px solid #00ff00; padding: 5px; margin: 5px 0; font-family: monospace; }
+        button { cursor: pointer; background: #004400; }
+        button:hover { background: #006600; }
+        .buy { color: #00ff00; }
+        .sell { color: #ff3333; }
+        #trade-log { height: 250px; overflow-y: auto; font-size: 0.9em; }
+        .flex-col { display: flex; flex-direction: column; }
+    </style>
+</head>
+<body>
+    <h2>🚀 LOB Trading Simulator</h2>
+    <div style="margin-bottom: 20px;">Status: <span id="status" style="color: yellow;">Connecting...</span></div>
+
+    <div class="container">
+        <!-- Market Data Panel -->
+        <div class="panel">
+            <h3>📈 Top of Book (Live)</h3>
+            <div style="font-size: 1.5em; margin: 20px 0;">
+                <div>Best Ask: <span id="best-ask" class="sell">---</span> (Qty: <span id="ask-qty">0</span>)</div>
+                <div style="margin-top: 10px;">Best Bid: <span id="best-bid" class="buy">---</span> (Qty: <span id="bid-qty">0</span>)</div>
+            </div>
+            <div style="margin-top: 40px; font-size: 0.9em; color: #888;">
+                * The matching engine is natively resolving thousands of orders sub-millisecond. The background Python task continuously generates synthetic order flow via Geometric Brownian Motion.
+            </div>
+        </div>
+
+        <!-- Trading Panel -->
+        <div class="panel flex-col">
+            <h3>⚡ Submit Order</h3>
+            <label>Type:</label>
+            <select id="order-type">
+                <option value="limit">Limit Order</option>
+                <option value="market">Market Order</option>
+            </select>
+            
+            <label>Side:</label>
+            <select id="order-side">
+                <option value="B">Buy (Bid)</option>
+                <option value="S">Sell (Ask)</option>
+            </select>
+            
+            <label>Price (Ignore for Market):</label>
+            <input type="number" id="order-price" step="0.01" value="100.00">
+            
+            <label>Quantity:</label>
+            <input type="number" id="order-qty" value="10">
+            
+            <button onclick="submitOrder()" style="margin-top: 15px; font-size: 1.1em; padding: 10px;">Send Order</button>
+        </div>
+
+        <!-- Trade Tape -->
+        <div class="panel">
+            <h3>📜 Recent Public Trades</h3>
+            <div id="trade-log"></div>
+        </div>
+
+        <!-- My Orders -->
+        <div class="panel">
+            <h3>🛒 My Orders Status</h3>
+            <div id="my-orders-log" style="height: 250px; overflow-y: auto; font-size: 0.9em;"></div>
+        </div>
+    </div>
+
+    <script>
+        const ws = new WebSocket("ws://127.0.0.1:8000/ws/trade");
+        const statusEl = document.getElementById('status');
+        const tradeLog = document.getElementById('trade-log');
+        const myOrdersLog = document.getElementById('my-orders-log');
+        const myOrderIds = new Set(); // Store our order IDs
+        const myOrdersData = {}; // Store order details
+
+        ws.onopen = () => {
+            statusEl.innerText = "Connected 🟢";
+            statusEl.style.color = "#00ff00";
+        };
+
+        ws.onclose = () => {
+            statusEl.innerText = "Disconnected 🔴";
+            statusEl.style.color = "red";
+        };
+
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            
+            if (data.event === "ACK") {
+                myOrderIds.add(data.order_id);
+                myOrdersData[data.order_id] = { ...data, filled: 0 };
+                
+                const logEntry = document.createElement('div');
+                logEntry.id = `order-${data.order_id}`;
+                logEntry.innerHTML = `[PENDING] ${data.side === 'B' ? 'BUY' : 'SELL'} ${data.qty} @ ${data.price}`;
+                logEntry.style.color = 'yellow';
+                myOrdersLog.prepend(logEntry);
+            }
+            else if (data.event === "TOB") {
+                document.getElementById('best-bid').innerText = data.best_bid.toFixed(2);
+                document.getElementById('bid-qty').innerText = data.bid_qty;
+                document.getElementById('best-ask').innerText = data.best_ask.toFixed(2);
+                document.getElementById('ask-qty').innerText = data.ask_qty;
+            } 
+            else if (data.event === "TRADE") {
+                const isMine = myOrderIds.has(data.taker) || myOrderIds.has(data.maker);
+                const logEntry = document.createElement('div');
+                
+                if (isMine) {
+                    logEntry.innerText = `⭐ MY TRADE: Executed ${data.qty} @ $${data.price.toFixed(2)}`;
+                    logEntry.style.backgroundColor = 'rgba(255, 215, 0, 0.2)';
+                    logEntry.style.borderLeft = '3px solid #ffd700';
+                    logEntry.style.color = '#ffd700';
+                    logEntry.style.padding = '2px 5px';
+                    logEntry.style.fontWeight = 'bold';
+                    logEntry.style.margin = '2px 0';
+                    
+                    // Update My Orders log
+                    const myId = myOrderIds.has(data.taker) ? data.taker : data.maker;
+                    if (myId && myOrdersData[myId]) {
+                        myOrdersData[myId].filled += data.qty;
+                        const orderEl = document.getElementById(`order-${myId}`);
+                        if (orderEl) {
+                            if (myOrdersData[myId].filled >= myOrdersData[myId].qty) {
+                                orderEl.innerHTML = `[FILLED]  ${myOrdersData[myId].side === 'B' ? 'BUY' : 'SELL'} ${myOrdersData[myId].qty} @ ${myOrdersData[myId].price}`;
+                                orderEl.style.color = '#00ff00';
+                            } else {
+                                orderEl.innerHTML = `[PARTIAL] ${myOrdersData[myId].side === 'B' ? 'BUY' : 'SELL'} ${myOrdersData[myId].filled}/${myOrdersData[myId].qty} @ ${myOrdersData[myId].price}`;
+                                orderEl.style.color = '#00aaff';
+                            }
+                        }
+                    }
+                } else {
+                    logEntry.innerText = `TRADE: Executed ${data.qty} @ $${data.price.toFixed(2)}`;
+                }
+                
+                tradeLog.prepend(logEntry);
+                if (tradeLog.children.length > 50) {
+                    tradeLog.removeChild(tradeLog.lastChild);
+                }
+            }
+        };
+
+        function submitOrder() {
+            const type = document.getElementById('order-type').value;
+            const side = document.getElementById('order-side').value;
+            const price = parseFloat(document.getElementById('order-price').value);
+            const qty = parseInt(document.getElementById('order-qty').value);
+
+            const payload = {
+                action: type,
+                side: side,
+                qty: qty
+            };
+
+            if (type === "limit") {
+                payload.price = price;
+            // Save temporary details before send to link with ACK
+            payload.temp_client_time = Date.now();
+            }
+
+            ws.send(JSON.stringify(payload));
+        }
+    </script>
+</body>
+</html>
