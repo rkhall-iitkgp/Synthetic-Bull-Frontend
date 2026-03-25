@@ -1,0 +1,126 @@
+.wallet-card {
+  background: rgba(30, 39, 60, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 24px;
+  backdrop-filter: blur(10px);
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.wallet-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.wallet-icon-bg {
+  width: 48px;
+  height: 48px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.wallet-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #e5e7eb;
+  margin: 0 0 4px 0;
+}
+
+.wallet-id-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #8e94a3;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 6px 10px;
+  border-radius: 6px;
+  width: fit-content;
+}
+
+.wallet-balance-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.balance-amount {
+  font-size: 36px;
+  font-weight: 700;
+  color: #e5e7eb;
+}
+
+.profit-loss-container {
+  display: flex;
+  gap: 32px;
+}
+
+.pl-column {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pl-label {
+  font-size: 11px;
+  color: #8e94a3;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+
+.pl-value {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.pl-value.green {
+  color: #10b981;
+}
+
+.pl-value.red {
+  color: #ef4444;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.action-btn {
+  flex: 1;
+  min-width: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #d1d5db;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.action-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #e5e7eb;
+}
+
+.action-btn:active {
+  background: rgba(255, 255, 255, 0.05);
+}
