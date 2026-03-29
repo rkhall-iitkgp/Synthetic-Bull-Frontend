@@ -264,7 +264,7 @@ class WSManager {
                     return;
                 }
             } catch (err) {
-                // ignore JSON errors
+                console.error('WS Message Handler Error:', err);
             }
         };
 

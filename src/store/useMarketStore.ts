@@ -253,27 +253,32 @@ const useMarketStore = create<MarketState>((set) => ({
 
     setLatestCandle: (candle: Candle) => set((state) => {
         const normalizedCandle = { ...candle, time: normalizeCandleTime(candle.time) };
-        const updatedCandles = [...state.candles];
-        const lastCandle = updatedCandles.length > 0 ? updatedCandles[updatedCandles.length - 1] : null;
+        const lastCandle = state.candles.length > 0 ? state.candles[state.candles.length - 1] : null;
 
-        if (lastCandle) {
-            if (normalizedCandle.time < lastCandle.time) {
-                // Out of order old candle, ignore
-                return state;
-            } else if (normalizedCandle.time === lastCandle.time) {
-                // Duplicate timestamp, overwrite instead of pushing
-                updatedCandles[updatedCandles.length - 1] = normalizedCandle;
-            } else {
-                // Safely greater, push
-                updatedCandles.push(normalizedCandle);
-            }
-        } else {
-            updatedCandles.push(normalizedCandle);
+        if (lastCandle && normalizedCandle.time === lastCandle.time) {
+            // Update last candle: still need a new array for React to see the change in 'latestCandle',
+            // but we can be more efficient or use this to prevent other effects from triggering.
+            const updatedCandles = [...state.candles];
+            updatedCandles[updatedCandles.length - 1] = normalizedCandle;
+
+            return {
+                latestCandle: normalizedCandle,
+                candles: updatedCandles,
+                lastPrice: normalizedCandle.close,
+                prices: { ...state.prices, [state.currentSymbol]: normalizedCandle.close }
+            };
         }
 
+        if (lastCandle && normalizedCandle.time < lastCandle.time) {
+            return state;
+        }
+
+        // It's a brand new candle
+        const updatedCandles = [...state.candles, normalizedCandle];
         if (updatedCandles.length > 2000) {
             updatedCandles.shift();
         }
+
         return {
             latestCandle: normalizedCandle,
             candles: updatedCandles,

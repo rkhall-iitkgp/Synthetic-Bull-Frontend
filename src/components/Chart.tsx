@@ -735,7 +735,7 @@ function Chart() {
             addLineIndicator(signalLine);
             addHistogramIndicator(histogram);
         }
-    }, [addHistogramIndicator, addLineIndicator, candles, enabledIndicators, removeAllIndicatorSeries]);
+    }, [addHistogramIndicator, addLineIndicator, candles.length, enabledIndicators, removeAllIndicatorSeries]);
 
     return (
         <div className="chart-root">
