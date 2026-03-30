@@ -11,8 +11,8 @@ export default function TradePanel() {
     const lastPrice = useMarketStore(state => state.lastPrice);
     const currentSymbol = useMarketStore(state => state.currentSymbol);
 
-    const bestBid = useMarketStore(state => state.orderBook.bids[0]?.price || 0);
-    const bestAsk = useMarketStore(state => state.orderBook.asks[0]?.price || 0);
+    const bestBid = useMarketStore(state => state.orderBooks[state.currentSymbol]?.bids[0]?.price || 0);
+    const bestAsk = useMarketStore(state => state.orderBooks[state.currentSymbol]?.asks[0]?.price || 0);
 
     const handlePriceClick = () => {
         setPrice(side === 'BUY' ? bestAsk.toFixed(2) : bestBid.toFixed(2));

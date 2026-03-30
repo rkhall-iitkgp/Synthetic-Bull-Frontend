@@ -1,10 +1,14 @@
 import React, { useMemo, useState } from 'react';
-import { X } from 'lucide-react';
 import useMarketStore from '../store/useMarketStore';
 
-const OrderBook = React.memo(function OrderBook({ onClose }: { onClose?: () => void }) {
-    const { bids, asks } = useMarketStore(state => state.orderBook);
-    const lastPrice = useMarketStore(state => state.lastPrice);
+const EMPTY_ORDER_BOOK = { bids: [], asks: [] };
+
+const OrderBook = React.memo(function OrderBook({ symbol: propSymbol }: { symbol?: string }) {
+    const globalSymbol = useMarketStore(state => state.currentSymbol);
+    const symbol = propSymbol || globalSymbol;
+    const orderBook = useMarketStore(state => state.orderBooks[symbol] || EMPTY_ORDER_BOOK);
+    const { bids, asks } = orderBook;
+    const lastPrice = useMarketStore(state => state.prices[symbol] || 0);
     const [displayMode, setDisplayMode] = useState<'both' | 'bids' | 'asks'>('both');
 
     // Top entries - reduced to 4 rows for extreme compaction
@@ -18,42 +22,27 @@ const OrderBook = React.memo(function OrderBook({ onClose }: { onClose?: () => v
 
     return (
         <div className="tv-orderbook">
-            {/* Header */}
-            <div className="tv-ob-header">
-                <div className="tv-ob-modes">
-                    <button
-                        className={`tv-ob-mode-btn ${displayMode === 'both' ? 'active' : ''}`}
-                        onClick={() => setDisplayMode('both')}
-                        title="Both"
-                    >
-                        <svg width="14" height="14" viewBox="0 0 14 14"><rect x="1" y="1" width="12" height="5" fill="#ef5350" rx="1" /><rect x="1" y="8" width="12" height="5" fill="#26a69a" rx="1" /></svg>
+            {/* Header - minimized */}
+            <div className="flex items-center justify-between px-2 py-1 border-b border-border-subtle bg-bg-panel/50">
+                <div className="tv-ob-modes flex gap-1">
+                    <button className={`p-0.5 rounded ${displayMode === 'both' ? 'bg-accent/20' : ''}`} onClick={() => setDisplayMode('both')}>
+                        <div className="w-3 h-3 flex flex-col gap-0.5"><div className="bg-bear h-1 w-full rounded-sm" /><div className="bg-bull h-1 w-full rounded-sm" /></div>
                     </button>
-                    <button
-                        className={`tv-ob-mode-btn ${displayMode === 'bids' ? 'active' : ''}`}
-                        onClick={() => setDisplayMode('bids')}
-                        title="Bids only"
-                    >
-                        <svg width="14" height="14" viewBox="0 0 14 14"><rect x="1" y="1" width="12" height="12" fill="#26a69a" rx="1" /></svg>
+                    <button className={`p-0.5 rounded ${displayMode === 'bids' ? 'bg-accent/20' : ''}`} onClick={() => setDisplayMode('bids')}>
+                        <div className="bg-bull w-3 h-3 rounded-sm" />
                     </button>
-                    <button
-                        className={`tv-ob-mode-btn ${displayMode === 'asks' ? 'active' : ''}`}
-                        onClick={() => setDisplayMode('asks')}
-                        title="Asks only"
-                    >
-                        <svg width="14" height="14" viewBox="0 0 14 14"><rect x="1" y="1" width="12" height="12" fill="#ef5350" rx="1" /></svg>
+                    <button className={`p-0.5 rounded ${displayMode === 'asks' ? 'bg-accent/20' : ''}`} onClick={() => setDisplayMode('asks')}>
+                        <div className="bg-bear w-3 h-3 rounded-sm" />
                     </button>
                 </div>
-                <div className="flex items-center gap-3">
-                    <span className="tv-ob-precision">0.01</span>
-                    {onClose && <X size={16} className="cursor-pointer text-[#787b86] hover:text-[#d1d4dc] transition-colors" onClick={onClose} />}
-                </div>
+                <div className="text-[9px] font-mono text-text-secondary">0.01</div>
             </div>
 
-            {/* Column headers */}
-            <div className="tv-ob-cols">
+            {/* Column headers - minimized */}
+            <div className="grid grid-cols-3 px-2 py-0.5 text-[8px] text-text-secondary uppercase font-bold border-b border-border-subtle/50">
                 <span>Price</span>
-                <span>Amount</span>
-                <span>Total</span>
+                <span className="text-right">Amount</span>
+                <span className="text-right">Total</span>
             </div>
 
             {/* Asks (reversed so lowest ask is at bottom, near spread) */}
@@ -75,10 +64,12 @@ const OrderBook = React.memo(function OrderBook({ onClose }: { onClose?: () => v
                 </div>
             )}
 
-            {/* Spread / Last Price */}
-            <div className="tv-ob-spread">
-                <span className="tv-ob-last-price">{lastPrice.toFixed(2)}</span>
-                <span className="tv-ob-spread-val">Spread: {spread.toFixed(2)} ({spreadPct.toFixed(3)}%)</span>
+            {/* Spread / Last Price - compact */}
+            <div className="flex items-center justify-between px-2 py-1 bg-white/5 border-y border-border-subtle/30">
+                <span className="text-xs font-bold font-mono text-text-primary">{lastPrice.toFixed(2)}</span>
+                <span className="text-[9px] text-text-secondary font-mono">
+                    Spread: {spread.toFixed(2)} ({spreadPct.toFixed(3)}%)
+                </span>
             </div>
 
             {/* Bids */}

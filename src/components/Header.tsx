@@ -5,8 +5,9 @@ import { TickerSearch } from './Chart';
 import { useTheme } from '../store/ThemeContext';
 import { useNavigate } from 'react-router-dom';
 import {
-    Menu, BarChart3, BarChart2, Bell, RotateCcw,
-    Search, Settings, ChevronDown, Maximize2, Sun, Moon, LayoutDashboard
+    Menu, BarChart3, BarChart2, RotateCcw,
+    Search, Settings, ChevronDown, Maximize2, Sun, Moon, LayoutDashboard,
+    LayoutGrid, PlusSquare, Columns2
 } from 'lucide-react';
 
 export default function Header() {
@@ -233,13 +234,52 @@ export default function Header() {
                 <div className="tv-header-separator" />
 
                 <button type="button" className="tv-header-btn icon-text">
-                    <Bell size={16} />
-                    <span>Alert</span>
-                </button>
-
-                <button type="button" className="tv-header-btn icon-text">
                     <RotateCcw size={16} />
                     <span>Replay</span>
+                </button>
+
+                <div className="tv-header-separator" />
+
+                {/* Windows Menu */}
+                <div className="relative group">
+                    <button type="button" className="tv-header-btn icon-text">
+                        <LayoutGrid size={16} />
+                        <span>Windows</span>
+                    </button>
+                    <div className="absolute top-full left-0 mt-1 hidden group-hover:flex flex-col bg-bg-elevated border border-border-subtle rounded-md overflow-hidden min-w-[140px] z-50 shadow-xl">
+                        <button onClick={() => useMarketStore.getState().addWidget('chart')} className="px-3 py-2 text-xs text-left hover:bg-accent/10 hover:text-accent transition-colors flex items-center gap-2">
+                            <BarChart2 size={12} /> Chart
+                        </button>
+                        <button onClick={() => useMarketStore.getState().addWidget('orderbook')} className="px-3 py-2 text-xs text-left hover:bg-accent/10 hover:text-accent transition-colors flex items-center gap-2">
+                            <LayoutGrid size={12} /> Order Book
+                        </button>
+                        <button onClick={() => useMarketStore.getState().addWidget('scalper')} className="px-3 py-2 text-xs text-left hover:bg-accent/10 hover:text-accent transition-colors flex items-center gap-2">
+                            <PlusSquare size={12} /> Scalper
+                        </button>
+                        <button onClick={() => useMarketStore.getState().addWidget('infopane')} className="px-3 py-2 text-xs text-left hover:bg-accent/10 hover:text-accent transition-colors flex items-center gap-2">
+                            <LayoutGrid size={12} /> Info Pane
+                        </button>
+                    </div>
+                </div>
+
+                {/* Quick Split */}
+                <button
+                    type="button"
+                    className="tv-header-btn icon-text"
+                    title="Split Chart"
+                    onClick={() => {
+                        const state = useMarketStore.getState();
+                        state.addWidget('chart');
+                        // Optional: Link both to Blue
+                        const widgets = useMarketStore.getState().activeWidgets;
+                        if (widgets.length >= 2) {
+                            state.setWidgetLink(widgets[widgets.length - 1].id, 'blue');
+                            state.setWidgetLink(widgets[widgets.length - 2].id, 'blue');
+                        }
+                    }}
+                >
+                    <Columns2 size={16} />
+                    <span>Split</span>
                 </button>
             </div>
 

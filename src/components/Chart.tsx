@@ -3,18 +3,15 @@ import { createChart, CandlestickSeries, HistogramSeries, LineSeries, AreaSeries
 import type { ISeriesApi, IChartApi, UTCTimestamp } from 'lightweight-charts';
 import useMarketStore, { INDICATOR_COLORS, INDICATOR_LIBRARY, TIMEFRAMES } from '../store/useMarketStore';
 import type { Candle } from '../store/useMarketStore';
-import { requestHistory, isSymbolCached } from '../services/websocket';
-import { useTheme } from '../store/ThemeContext';
+import { requestHistory, isStreamCached } from '../services/websocket';
 import {
     Search, Crosshair, TrendingUp, Minus, Type, Ruler,
     ChevronDown, X, Pencil, MousePointer2, Hash,
-    MoveHorizontal, ZoomIn, Star, Trash2, Camera
+    MoveHorizontal, ZoomIn, Star, Trash2, Camera, BarChart2
 } from 'lucide-react';
+import type { IndicatorId } from '../store/useMarketStore';
+import { useTheme } from '../store/ThemeContext';
 import {
-    calculateBollingerBands,
-    calculateEMA,
-    calculateMACD,
-    calculateRSI,
     calculateSMA,
     calculateVWAP,
 } from '../lib/indicators';
@@ -63,7 +60,6 @@ export function TickerSearch() {
         setQuery('');
     }, []);
 
-    // Derive tickers list from store - use tickers if available, fall back to symbols
     const tickers = useMemo(() => {
         if (storeTickers.length > 0) return storeTickers;
         return storeSymbols.map(s => ({ symbol: s, name: s, category: 'Stocks' }));
@@ -87,11 +83,8 @@ export function TickerSearch() {
     const handleSelect = useCallback((symbol: string) => {
         setCurrentSymbol(symbol);
         closeSearch();
-
-        // Immediately clear stale chart data before zustand subscription triggers worker INIT
         useMarketStore.getState().clearCandles();
-
-        if (!isSymbolCached(symbol)) {
+        if (!isStreamCached(symbol, useMarketStore.getState().timeframe)) {
             requestHistory(symbol);
         }
     }, [setCurrentSymbol, closeSearch]);
@@ -106,23 +99,17 @@ export function TickerSearch() {
 
     return (
         <div className="ticker-search-container">
-            <button
-                className="ticker-search-trigger"
-                onClick={() => setIsOpen(true)}
-            >
+            <button className="ticker-search-trigger" onClick={() => setIsOpen(true)}>
                 <span className="ticker-symbol">{currentSymbol}</span>
                 <ChevronDown size={14} className="ticker-chevron" />
             </button>
-
             {isOpen && (
                 <div className="tv-modal-overlay" onClick={() => closeSearch()}>
                     <div className="tv-modal-content" onClick={e => e.stopPropagation()}>
                         <div className="tv-modal-header">
                             <div className="tv-modal-title-row">
                                 <span className="tv-modal-title">Symbol Search</span>
-                                <button className="tv-modal-close" onClick={() => closeSearch()}>
-                                    <X size={18} />
-                                </button>
+                                <button className="tv-modal-close" onClick={() => closeSearch()}><X size={18} /></button>
                             </div>
                             <div className="tv-modal-search">
                                 <Search size={16} className="ticker-search-icon" />
@@ -133,70 +120,38 @@ export function TickerSearch() {
                                     value={query}
                                     onChange={(e) => setQuery(e.target.value)}
                                 />
-                                {query && (
-                                    <button className="ticker-clear-btn" onClick={() => setQuery('')}>
-                                        <X size={12} />
-                                    </button>
-                                )}
+                                {query && <button className="ticker-clear-btn" onClick={() => setQuery('')}><X size={12} /></button>}
                             </div>
                         </div>
-
                         <div className="tv-modal-tabs">
                             {['All', 'Stocks', 'Crypto', 'Synthetic'].map(t => (
-                                <button
-                                    key={t}
-                                    className={`tv-modal-tab ${tab === t ? 'active' : ''}`}
-                                    onClick={() => setTab(t)}
-                                >
-                                    {t}
-                                </button>
+                                <button key={t} className={`tv-modal-tab ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}>{t}</button>
                             ))}
                         </div>
-
                         <div className="tv-modal-list styling-scrollbar">
-                            {filtered.length === 0 ? (
-                                <div className="tv-modal-empty">No symbols match your criteria</div>
-                            ) : (
-                                filtered.map(t => {
-                                    const isWatched = watchlist.includes(t.symbol);
-                                    return (
-                                        <div key={t.symbol} className="tv-modal-item-wrapper flex items-center group">
-                                            <button
-                                                className="tv-modal-item flex-1"
-                                                onClick={() => handleSelect(t.symbol)}
-                                            >
-                                                <div className="tv-modal-item-left">
-                                                    <div className="tv-modal-item-symbol">
-                                                        {t.symbol}
-                                                        {t.symbol === currentSymbol && (
-                                                            <span className="tv-modal-item-check">✓</span>
-                                                        )}
-                                                    </div>
-                                                    <div className="tv-modal-item-name">{t.name}</div>
-                                                </div>
-                                                <div className="tv-modal-item-right">
-                                                    <span className="tv-modal-item-category">{t.category}</span>
-                                                    <span className="tv-modal-item-exchange">SIMULATOR</span>
-                                                </div>
-                                            </button>
-                                            <button
-                                                className={`p-2 mr-2 rounded hover:bg-border-subtle transition-colors ${isWatched ? 'text-yellow-500' : 'text-text-secondary opacity-0 group-hover:opacity-100'}`}
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    if (isWatched) {
-                                                        removeFromWatchlist(t.symbol);
-                                                    } else {
-                                                        addToWatchlist(t.symbol);
-                                                    }
-                                                }}
-                                                title={isWatched ? "Remove from Watchlist" : "Add to Watchlist"}
-                                            >
-                                                <Star size={16} fill={isWatched ? "currentColor" : "none"} />
-                                            </button>
-                                        </div>
-                                    );
-                                })
-                            )}
+                            {filtered.map(t => {
+                                const isWatched = watchlist.includes(t.symbol);
+                                return (
+                                    <div key={t.symbol} className="tv-modal-item-wrapper flex items-center group">
+                                        <button className="tv-modal-item flex-1" onClick={() => handleSelect(t.symbol)}>
+                                            <div className="tv-modal-item-left">
+                                                <div className="tv-modal-item-symbol">{t.symbol}{t.symbol === currentSymbol && <span className="tv-modal-item-check">✓</span>}</div>
+                                                <div className="tv-modal-item-name">{t.name}</div>
+                                            </div>
+                                            <div className="tv-modal-item-right">
+                                                <span className="tv-modal-item-category">{t.category}</span>
+                                                <span className="tv-modal-item-exchange">SIMULATOR</span>
+                                            </div>
+                                        </button>
+                                        <button
+                                            className={`p-2 mr-2 rounded hover:bg-border-subtle transition-colors ${isWatched ? 'text-yellow-500' : 'text-text-secondary opacity-0 group-hover:opacity-100'}`}
+                                            onClick={(e) => { e.stopPropagation(); isWatched ? removeFromWatchlist(t.symbol) : addToWatchlist(t.symbol); }}
+                                        >
+                                            <Star size={16} fill={isWatched ? "currentColor" : "none"} />
+                                        </button>
+                                    </div>
+                                );
+                            })}
                         </div>
                     </div>
                 </div>
@@ -206,13 +161,11 @@ export function TickerSearch() {
 }
 
 // ─── OHLCV Info Overlay ─────────────────────────────────────────────────────
-function OHLCVOverlay() {
+function OHLCVOverlay({ symbol: instanceSymbol, timeframe: instanceTimeframe }: { symbol: string, timeframe: number }) {
+    const streamKey = `${instanceSymbol}:${instanceTimeframe}`;
     const crosshairData = useMarketStore(s => s.crosshairData);
-    const currentSymbol = useMarketStore(s => s.currentSymbol);
-    const timeframe = useMarketStore(s => s.timeframe);
-    const latestCandle = useMarketStore(s => s.latestCandle);
-
-    const tf = TIMEFRAMES.find(t => t.seconds === timeframe);
+    const latestCandle = useMarketStore(s => s.latestCandles[streamKey]);
+    const tf = TIMEFRAMES.find(t => t.seconds === instanceTimeframe);
     const rawData = crosshairData || latestCandle;
 
     if (!rawData) return null;
@@ -220,43 +173,78 @@ function OHLCVOverlay() {
     const o = rawData.open ?? rawData.close ?? 0;
     const h = rawData.high ?? rawData.close ?? 0;
     const l = rawData.low ?? rawData.close ?? 0;
-    const c = rawData.close ?? rawData.value ?? 0;
-    const v = rawData.volume ?? 0;
+    const c = rawData.close ?? 0;
 
     const isUp = c >= o;
     const color = isUp ? '#26a69a' : '#ef5350';
 
     return (
         <div className="ohlcv-overlay">
-            <span className="ohlcv-symbol">{currentSymbol}</span>
+            <span className="ohlcv-symbol">{instanceSymbol}</span>
             <span className="ohlcv-timeframe">{tf?.label || '1m'}</span>
-            <span className="ohlcv-label">O</span>
-            <span className="ohlcv-value" style={{ color }}>{o.toFixed(2)}</span>
-            <span className="ohlcv-label">H</span>
-            <span className="ohlcv-value" style={{ color }}>{h.toFixed(2)}</span>
-            <span className="ohlcv-label">L</span>
-            <span className="ohlcv-value" style={{ color }}>{l.toFixed(2)}</span>
-            <span className="ohlcv-label">C</span>
-            <span className="ohlcv-value" style={{ color }}>{c.toFixed(2)}</span>
-            <span className="ohlcv-label">Vol</span>
-            <span className="ohlcv-value ohlcv-vol">{v.toLocaleString()}</span>
+            <div className="flex gap-3 ml-2">
+                <div className="flex gap-1 items-baseline">
+                    <span className="text-text-secondary text-[10px]">O</span>
+                    <span className="font-mono" style={{ color }}>{o.toFixed(2)}</span>
+                </div>
+                <div className="flex gap-1 items-baseline">
+                    <span className="text-text-secondary text-[10px]">H</span>
+                    <span className="font-mono" style={{ color }}>{h.toFixed(2)}</span>
+                </div>
+                <div className="flex gap-1 items-baseline">
+                    <span className="text-text-secondary text-[10px]">L</span>
+                    <span className="font-mono" style={{ color }}>{l.toFixed(2)}</span>
+                </div>
+                <div className="flex gap-1 items-baseline">
+                    <span className="text-text-secondary text-[10px]">C</span>
+                    <span className="font-mono" style={{ color }}>{c.toFixed(2)}</span>
+                </div>
+            </div>
         </div>
     );
 }
 
-function IndicatorsOverlay() {
-    const enabledIndicators = useMarketStore((s) => s.enabledIndicators);
-    if (!enabledIndicators.length) return null;
+export function ChartHeaderControls({ widgetId }: { widgetId: string }) {
+    const updateWidgetSettings = useMarketStore(s => s.updateWidgetSettings);
+    const widget = useMarketStore(s => s.activeWidgets.find(w => w.id === widgetId));
+    if (!widget) return null;
 
-    const labels = INDICATOR_LIBRARY.reduce<Record<string, string>>((acc, item) => {
-        acc[item.id] = item.label;
-        return acc;
-    }, {});
+    const { timeframe, chartType, enabledIndicators = [] } = widget;
 
     return (
+        <div className="flex items-center gap-1 h-full ml-4">
+            <div className="flex gap-0.5 border-r border-white/5 pr-2 mr-2 h-4 items-center">
+                {TIMEFRAMES.slice(0, 5).map(tf => (
+                    <button
+                        key={tf.seconds}
+                        onClick={() => updateWidgetSettings(widgetId, { timeframe: tf.seconds })}
+                        className={`px-1.5 py-0.5 text-[9px] font-bold rounded-sm transition-colors ${timeframe === tf.seconds ? 'bg-accent text-white' : 'text-text-secondary hover:bg-white/5 hover:text-text-primary'}`}
+                    >
+                        {tf.label}
+                    </button>
+                ))}
+            </div>
+            <div className="flex gap-1 pr-2 mr-2 border-r border-white/5 h-4 items-center">
+                <button onClick={() => updateWidgetSettings(widgetId, { chartType: 'Candles' })} className={`p-1 rounded-sm ${chartType === 'Candles' ? 'text-accent' : 'text-text-secondary hover:text-text-primary'}`}><BarChart2 size={12} /></button>
+                <button onClick={() => updateWidgetSettings(widgetId, { chartType: 'Line' })} className={`p-1 rounded-sm ${chartType === 'Line' ? 'text-accent' : 'text-text-secondary hover:text-text-primary'}`}><TrendingUp size={12} /></button>
+            </div>
+            <button
+                onClick={() => updateWidgetSettings(widgetId, { enabledIndicators: enabledIndicators.length ? [] : ['sma20'] })}
+                className={`px-1.5 py-0.5 text-[9px] font-bold rounded-sm ${enabledIndicators.length ? 'text-accent' : 'text-text-secondary'}`}
+            >
+                IND ({enabledIndicators.length})
+            </button>
+        </div>
+    );
+}
+
+function IndicatorsOverlay({ indicators }: { indicators: string[] }) {
+    if (!indicators.length) return null;
+    const labels = INDICATOR_LIBRARY.reduce<Record<string, string>>((acc, item) => { acc[item.id] = item.label; return acc; }, {});
+    return (
         <div className="chart-indicators-overlay">
-            {enabledIndicators.map((id) => (
-                <span key={id} className="chart-indicator-tag" style={{ borderColor: INDICATOR_COLORS[id] }}>
+            {indicators.map((id) => (
+                <span key={id} className="chart-indicator-tag" style={{ borderColor: INDICATOR_COLORS[id as IndicatorId] }}>
                     {labels[id] || id.toUpperCase()}
                 </span>
             ))}
@@ -264,7 +252,7 @@ function IndicatorsOverlay() {
     );
 }
 
-// ─── Chart Toolbar (Left side, TradingView drawing tools) ───────────────────
+// ─── Chart Toolbar (Left side) ──────────────────────────────────────────────
 function ChartToolbar() {
     const activeTool = useMarketStore(s => s.activeTool);
     const setActiveTool = useMarketStore(s => s.setActiveTool);
@@ -273,18 +261,18 @@ function ChartToolbar() {
     const tools = [
         { id: 'crosshair', icon: Crosshair, label: 'Crosshair' },
         { id: 'pointer', icon: MousePointer2, label: 'Pointer' },
-        null, // separator
+        null,
         { id: 'trendline', icon: TrendingUp, label: 'Trend Line' },
         { id: 'horzline', icon: Minus, label: 'Horizontal Line' },
         { id: 'ray', icon: MoveHorizontal, label: 'Ray' },
-        null, // separator
+        null,
         { id: 'text', icon: Type, label: 'Text' },
         { id: 'pencil', icon: Pencil, label: 'Draw' },
-        null, // separator
+        null,
         { id: 'fibonacci', icon: Hash, label: 'Fibonacci' },
         { id: 'measure', icon: Ruler, label: 'Measure (M)' },
         { id: 'zoom', icon: ZoomIn, label: 'Zoom In' },
-        null, // separator
+        null,
         { id: 'clear', icon: Trash2, label: 'Clear All (Alt+C)', action: clearDrawings },
         { id: 'screenshot', icon: Camera, label: 'Screenshot (Alt+S)' },
     ];
@@ -297,10 +285,7 @@ function ChartToolbar() {
                     <button
                         key={tool.id}
                         className={`chart-toolbar-btn ${activeTool === tool.id ? 'active' : ''}`}
-                        onClick={() => {
-                            if (tool.action) tool.action();
-                            else setActiveTool(tool.id);
-                        }}
+                        onClick={() => tool.action ? tool.action() : setActiveTool(tool.id)}
                         title={tool.label}
                     >
                         <tool.icon size={16} />
@@ -316,23 +301,28 @@ class ChartErrorBoundary extends React.Component<{ children: React.ReactNode }, 
     static getDerivedStateFromError(error: Error) { return { hasError: true, error }; }
     render() {
         if (this.state.hasError) {
-            return <div className="text-red-500 p-10 font-mono text-xs whitespace-pre-wrap flex flex-col h-full bg-slate-900 border overflow-auto">
+            return <div className="text-red-500 p-10 font-mono text-xs whitespace-pre-wrap flex flex-col h-full bg-bg-panel border overflow-auto">
                 <h1 className="text-xl mb-4 font-bold text-white">Chart Crash</h1>
                 {this.state.error?.toString()}
-                {'\n'}
-                {this.state.error?.stack}
+                <br /> {this.state.error?.stack}
             </div>;
         }
         return this.props.children;
     }
 }
 
-export default function ChartContainer() {
-    return <ChartErrorBoundary><Chart /></ChartErrorBoundary>;
+interface ChartProps {
+    widgetId?: string;
+    symbol?: string;
 }
 
-// ─── Main Chart Component ───────────────────────────────────────────────────
-function Chart() {
+const EMPTY_ARRAY: any[] = [];
+
+export default function ChartContainer(props: ChartProps) {
+    return <ChartErrorBoundary><Chart {...props} /></ChartErrorBoundary>;
+}
+
+function Chart({ widgetId, symbol: propSymbol }: ChartProps) {
     const { theme } = useTheme();
     const chartContainerRef = useRef<HTMLDivElement>(null);
     const chartRef = useRef<IChartApi | null>(null);
@@ -341,240 +331,92 @@ function Chart() {
         volume: ISeriesApi<"Histogram">;
     } | null>(null);
 
-    const candles = useMarketStore(s => s.candles);
-    const historySequence = useMarketStore(s => s.historySequence);
-    const enabledIndicators = useMarketStore((s) => s.enabledIndicators);
-    const chartType = useMarketStore(s => s.chartType);
+    const globalSymbol = useMarketStore(s => s.currentSymbol);
+    const widget = useMarketStore(s => s.activeWidgets.find(w => w.id === widgetId));
+
+    // Instance Settings
+    const symbol = propSymbol || widget?.symbol || globalSymbol;
+    const globalTimeframe = useMarketStore(s => s.timeframe);
+    const timeframe = widget?.timeframe || globalTimeframe;
+    const chartType = widget?.chartType || useMarketStore(s => s.chartType);
+    const enabledIndicators = widget?.enabledIndicators || EMPTY_ARRAY;
+
+    const streamKey = `${symbol}:${timeframe}`;
+
+    const candles = useMarketStore(s => s.candlesMap[streamKey]) || EMPTY_ARRAY;
+    const historySequence = useMarketStore(s => s.historySequences[streamKey]) || 0;
     const setCrosshairData = useMarketStore(s => s.setCrosshairData);
-    const activeTool = useMarketStore(s => s.activeTool);
-    const setActiveTool = useMarketStore(s => s.setActiveTool);
-    const drawings = useMarketStore(s => s.drawings);
-    const setDrawings = useMarketStore(s => s.setDrawings);
-    const clearDrawings = useMarketStore(s => s.clearDrawings);
-
-    const [drawingStatus, setDrawingStatus] = useState<{
-        points: { time: number; price: number }[];
-        type: string;
-    } | null>(null);
-
-    const drawingSeriesRef = useRef<ISeriesApi<"Line">[]>([]);
 
     const indicatorSeriesRef = useRef<IndicatorSeriesBucket>({ line: [], histogram: [] });
 
+    // Helpers
     const removeAllIndicatorSeries = useCallback(() => {
         if (!chartRef.current) return;
-        indicatorSeriesRef.current.line.forEach((series) => chartRef.current?.removeSeries(series));
-        indicatorSeriesRef.current.histogram.forEach((series) => chartRef.current?.removeSeries(series));
+        indicatorSeriesRef.current.line.forEach((s) => chartRef.current?.removeSeries(s));
+        indicatorSeriesRef.current.histogram.forEach((s) => chartRef.current?.removeSeries(s));
         indicatorSeriesRef.current = { line: [], histogram: [] };
     }, []);
-
-    const addLineIndicator = useCallback((series: ISeriesApi<'Line'>) => {
-        indicatorSeriesRef.current.line.push(series);
-    }, []);
-
-    const addHistogramIndicator = useCallback((series: ISeriesApi<'Histogram'>) => {
-        indicatorSeriesRef.current.histogram.push(series);
-    }, []);
-
-    const removeAllDrawings = useCallback(() => {
-        if (!chartRef.current) return;
-        drawingSeriesRef.current.forEach(s => chartRef.current?.removeSeries(s));
-        drawingSeriesRef.current = [];
-    }, []);
-
-    // Apply chart colours based on theme
-    useEffect(() => {
-        if (!chartRef.current) return;
-        const p = theme === 'dark' ? DARK_CHART : LIGHT_CHART;
-        chartRef.current.applyOptions({
-            layout: {
-                background: { type: ColorType.Solid, color: p.bg },
-                textColor: p.text,
-            },
-            grid: {
-                vertLines: { color: p.gridLine },
-                horzLines: { color: p.gridLine },
-            },
-            crosshair: {
-                vertLine: { color: p.crosshair, labelBackgroundColor: p.crosshairLabel },
-                horzLine: { color: p.crosshair, labelBackgroundColor: p.crosshairLabel },
-            },
-            rightPriceScale: { borderColor: p.border },
-            timeScale: { borderColor: p.border },
-        });
-    }, [theme]);
 
     const formatCandleData = useCallback((c: Candle) => {
         if (chartType.toLowerCase().includes('line') || chartType === 'Area' || chartType === 'Baseline') {
             return { time: c.time as UTCTimestamp, value: c.close };
         }
-        return {
-            time: c.time as UTCTimestamp,
-            open: c.open,
-            high: c.high,
-            low: c.low,
-            close: c.close,
-        };
+        return { time: c.time as UTCTimestamp, open: c.open, high: c.high, low: c.low, close: c.close };
     }, [chartType]);
 
-    // Initialize chart
+    const lastHistoryCountRef = useRef(0);
+
+    // Effects
+    useEffect(() => {
+        if (!chartRef.current) return;
+        const p = theme === 'dark' ? DARK_CHART : LIGHT_CHART;
+        chartRef.current.applyOptions({
+            layout: { background: { type: ColorType.Solid, color: p.bg }, textColor: p.text },
+            grid: { vertLines: { color: p.gridLine }, horzLines: { color: p.gridLine } },
+            crosshair: { vertLine: { color: p.crosshair, labelBackgroundColor: p.crosshairLabel }, horzLine: { color: p.crosshair, labelBackgroundColor: p.crosshairLabel } },
+            rightPriceScale: { borderColor: p.border },
+            timeScale: { borderColor: p.border },
+        });
+    }, [theme]);
+
     useEffect(() => {
         if (!chartContainerRef.current) return;
         const p = theme === 'dark' ? DARK_CHART : LIGHT_CHART;
-
         const chart = createChart(chartContainerRef.current, {
-            layout: {
-                background: { type: ColorType.Solid, color: p.bg },
-                textColor: p.text,
-                fontSize: 11,
-            },
-            grid: {
-                vertLines: { color: p.gridLine, style: 0 },
-                horzLines: { color: p.gridLine, style: 0 },
-            },
-            crosshair: {
-                mode: CrosshairMode.Normal,
-                vertLine: {
-                    color: p.crosshair,
-                    style: 0,
-                    width: 1,
-                    labelBackgroundColor: p.crosshairLabel,
-                },
-                horzLine: {
-                    color: p.crosshair,
-                    style: 0,
-                    width: 1,
-                    labelBackgroundColor: p.crosshairLabel,
-                },
-            },
-            rightPriceScale: {
-                borderColor: p.border,
-                scaleMargins: { top: 0.08, bottom: 0.32 },
-            },
-            timeScale: {
-                borderColor: p.border,
-                timeVisible: true,
-                secondsVisible: false,
-                rightOffset: 5,
-                barSpacing: 8,
-            },
+            layout: { background: { type: ColorType.Solid, color: p.bg }, textColor: p.text, fontSize: 11 },
+            grid: { vertLines: { color: p.gridLine }, horzLines: { color: p.gridLine } },
+            crosshair: { mode: CrosshairMode.Normal },
+            rightPriceScale: { visible: true, borderColor: p.border, scaleMargins: { top: 0.1, bottom: 0.3 } },
+            timeScale: { visible: true, borderColor: p.border, timeVisible: true, secondsVisible: true },
         });
 
-        let mainSeries: ISeriesApi<"Candlestick" | "Line" | "Area" | "Baseline" | "Histogram">;
+        let mainSeries: any;
+        if (chartType === 'Line') mainSeries = chart.addSeries(LineSeries, { color: '#2962FF', lineWidth: 2 });
+        else if (chartType === 'Area') mainSeries = chart.addSeries(AreaSeries, { topColor: 'rgba(41,98,255,0.3)', bottomColor: 'rgba(41,98,255,0)', lineColor: '#2962FF' });
+        else if (chartType === 'Baseline') mainSeries = chart.addSeries(BaselineSeries, { baseValue: { type: 'price', price: 0 } });
+        else mainSeries = chart.addSeries(CandlestickSeries, { upColor: '#26a69a', downColor: '#ef5350' });
 
-        switch (chartType) {
-            case 'Line':
-                mainSeries = chart.addSeries(LineSeries, {
-                    color: '#2962FF',
-                    lineWidth: 2,
-                    priceLineVisible: false,
-                    lastValueVisible: false,
-                });
-                break;
-            case 'Area':
-                mainSeries = chart.addSeries(AreaSeries, {
-                    topColor: 'rgba(41, 98, 255, 0.3)',
-                    bottomColor: 'rgba(41, 98, 255, 0)',
-                    lineColor: '#2962FF',
-                    lineWidth: 2,
-                    priceLineVisible: false,
-                    lastValueVisible: false,
-                });
-                break;
-            case 'Baseline':
-                mainSeries = chart.addSeries(BaselineSeries, {
-                    baseValue: { type: 'price', price: 0 },
-                    topFillColor1: 'rgba(38, 166, 154, 0.28)',
-                    topFillColor2: 'rgba(38, 166, 154, 0.05)',
-                    topLineColor: 'rgba(38, 166, 154, 1)',
-                    bottomFillColor1: 'rgba(239, 83, 80, 0.05)',
-                    bottomFillColor2: 'rgba(239, 83, 80, 0.28)',
-                    bottomLineColor: 'rgba(239, 83, 80, 1)',
-                    lineWidth: 2,
-                    priceLineVisible: false,
-                    lastValueVisible: false,
-                });
-                break;
-            case 'Hollow candles':
-                mainSeries = chart.addSeries(CandlestickSeries, {
-                    upColor: 'transparent',
-                    downColor: 'transparent',
-                    borderVisible: true,
-                    borderUpColor: '#26a69a',
-                    borderDownColor: '#ef5350',
-                    wickUpColor: '#26a69a',
-                    wickDownColor: '#ef5350',
-                });
-                break;
-            case 'Candles':
-            default:
-                mainSeries = chart.addSeries(CandlestickSeries, {
-                    upColor: '#26a69a',
-                    downColor: '#ef5350',
-                    borderUpColor: '#26a69a',
-                    borderDownColor: '#ef5350',
-                    wickUpColor: '#26a69a',
-                    wickDownColor: '#ef5350',
-                    priceLineColor: '#f59e0b',
-                    priceLineStyle: 2,
-                    priceLineWidth: 1,
-                });
-                break;
-        }
+        const volumeSeries = chart.addSeries(HistogramSeries, { priceFormat: { type: 'volume' }, priceScaleId: 'volume' });
+        chart.priceScale('volume').applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
 
-        const volumeSeries = chart.addSeries(HistogramSeries, {
-            priceFormat: { type: 'volume' },
-            priceScaleId: 'volume',
-        });
-
-        chart.priceScale('volume').applyOptions({
-            scaleMargins: { top: 0.8, bottom: 0 },
-        });
-
-        // Subscribe to crosshair move for OHLCV overlay
         chart.subscribeCrosshairMove((param) => {
-            if (!param || !param.time || !param.seriesData) {
-                setCrosshairData(null);
-                return;
-            }
-            const candleData = param.seriesData.get(mainSeries) as { open?: number; high?: number; low?: number; close?: number; value?: number } | undefined;
-            if (candleData) {
-                const volData = param.seriesData.get(volumeSeries) as { value?: number } | undefined;
-                setCrosshairData({
-                    open: candleData.open ?? candleData.value ?? 0,
-                    high: candleData.high ?? candleData.value ?? 0,
-                    low: candleData.low ?? candleData.value ?? 0,
-                    close: candleData.close ?? candleData.value ?? 0,
-                    volume: volData?.value ?? 0,
-                    time: param.time as number,
-                });
-            }
+            if (!param || !param.time || !param.seriesData) { setCrosshairData(null); return; }
+            const candleData = param.seriesData.get(mainSeries) as any;
+            if (candleData) setCrosshairData({ ...candleData, volume: (param.seriesData.get(volumeSeries) as any)?.value || 0, time: param.time as number });
         });
 
         chartRef.current = chart;
-        seriesRef.current = { candle: mainSeries as any, volume: volumeSeries };
-
-        // Init with existing candles if component mounts after websocket already received them
-        const existingCandles = useMarketStore.getState().candles;
-        if (existingCandles.length > 0 && Array.isArray(existingCandles)) {
-            mainSeries.setData(existingCandles.map(formatCandleData) as Parameters<typeof mainSeries.setData>[0]);
-            volumeSeries.setData(existingCandles.map(c => ({
-                time: c.time as UTCTimestamp,
-                value: c.volume,
-                color: c.close >= c.open ? 'rgba(38,166,154,0.35)' : 'rgba(239,83,80,0.35)'
-            })));
-        }
+        seriesRef.current = { candle: mainSeries, volume: volumeSeries };
 
         const handleResize = () => {
-            if (chartContainerRef.current) {
-                chart.applyOptions({
-                    width: chartContainerRef.current.clientWidth,
-                    height: chartContainerRef.current.clientHeight,
-                });
-            }
+            if (!chartContainerRef.current) return;
+            chart.applyOptions({ width: chartContainerRef.current.clientWidth, height: chartContainerRef.current.clientHeight });
         };
+        handleResize();
 
-        const resizeObserver = new ResizeObserver(handleResize);
+        const resizeObserver = new ResizeObserver(() => {
+            requestAnimationFrame(handleResize);
+        });
         resizeObserver.observe(chartContainerRef.current);
 
         return () => {
@@ -584,357 +426,57 @@ function Chart() {
             chartRef.current = null;
             seriesRef.current = null;
         };
-    }, [removeAllIndicatorSeries, setCrosshairData, theme, chartType, formatCandleData]);
+    }, [theme, chartType, symbol, timeframe]);
 
-    // Batch data sync — triggers only on history load/clear (historySequence), not individual candle updates
     useEffect(() => {
         if (!seriesRef.current) return;
-        const currentCandles = useMarketStore.getState().candles;
-
-        if (currentCandles.length === 0) {
-            seriesRef.current.candle.setData([]);
-            seriesRef.current.volume.setData([]);
-            return;
-        }
-
-        seriesRef.current.candle.setData(currentCandles.map(formatCandleData));
-        seriesRef.current.volume.setData(currentCandles.map(c => ({
+        const formattedCandles = (candles || []).map(formatCandleData);
+        seriesRef.current.candle.setData(formattedCandles);
+        seriesRef.current.volume.setData((candles || []).map(c => ({
             time: c.time as UTCTimestamp,
             value: c.volume,
-            color: c.close >= c.open ? 'rgba(38, 166, 154, 0.5)' : 'rgba(239, 83, 80, 0.5)',
+            color: c.close >= c.open ? 'rgba(38,166,154,0.5)' : 'rgba(239,83,80,0.5)'
         })));
 
-        // Scroll to latest candle — prevents "replay from start" on initial load
-        chartRef.current?.timeScale().scrollToRealTime();
-    }, [historySequence, formatCandleData]);
+        if (formattedCandles.length > 0 && lastHistoryCountRef.current === 0) {
+            setTimeout(() => {
+                chartRef.current?.timeScale().fitContent();
+            }, 100);
+        }
+        lastHistoryCountRef.current = formattedCandles.length;
+    }, [candles, historySequence, formatCandleData]);
 
-    // Shortcuts implementation
+    // Indicators Redraw
     useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            // Don't trigger shortcuts if user is typing in an input
-            if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') return;
-
-            const isAlt = e.altKey;
-            const isCtrl = e.ctrlKey || e.metaKey;
-            const key = e.key.toLowerCase();
-
-            // Alt + T: Trendline
-            if (isAlt && key === 't') {
-                e.preventDefault();
-                setActiveTool('trendline');
-            }
-            // Alt + H: Horizontal Line
-            else if (isAlt && key === 'h') {
-                e.preventDefault();
-                setActiveTool('horzline');
-            }
-            // Alt + R: Ray
-            else if (isAlt && key === 'r') {
-                e.preventDefault();
-                setActiveTool('ray');
-            }
-            // Alt + C: Clear All
-            else if (isAlt && key === 'c') {
-                e.preventDefault();
-                clearDrawings();
-            }
-            // T: Text
-            else if (key === 't' && !isAlt && !isCtrl) {
-                e.preventDefault();
-                setActiveTool('text');
-            }
-            // M: Measure
-            else if (key === 'm' && !isAlt && !isCtrl) {
-                e.preventDefault();
-                setActiveTool('measure');
-            }
-            // Escape: Reset to crosshair
-            else if (key === 'escape') {
-                setActiveTool('crosshair');
-                setDrawingStatus(null);
-            }
-            // Alt + S: Screenshot
-            else if (isAlt && key === 's') {
-                e.preventDefault();
-                if (chartRef.current) {
-                    const canvas = chartRef.current.takeScreenshot();
-                    const link = document.createElement('a');
-                    link.download = `chart-${new Date().getTime()}.png`;
-                    link.href = canvas.toDataURL();
-                    link.click();
-                }
-            }
-        };
-
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [setActiveTool, clearDrawings]);
-
-    // Drawing Logic - Mouse Handlers
-    useEffect(() => {
-        if (!chartRef.current || activeTool === 'crosshair' || activeTool === 'pointer') return;
-
-        const chart = chartRef.current;
-        const container = chartContainerRef.current;
-        if (!container) return;
-
-        const handleMouseDown = (param: any) => {
-            if (!param.time || !param.point) return;
-            const price = seriesRef.current?.candle.coordinateToPrice(param.point.y);
-            if (price === null || price === undefined) return;
-
-            const time = param.time as number;
-
-            if (activeTool === 'horzline') {
-                setDrawings([...drawings, { type: 'horzline', points: [{ time, price }] }]);
-                setActiveTool('crosshair'); // Reset after one click
-                return;
-            }
-
-            if (activeTool === 'text') {
-                const text = prompt("Enter text label:");
-                if (text) {
-                    setDrawings([...drawings, { type: 'text', text, points: [{ time, price }] }]);
-                }
-                setActiveTool('crosshair');
-                return;
-            }
-
-            if (!drawingStatus) {
-                setDrawingStatus({ type: activeTool, points: [{ time, price }] });
-            } else {
-                // Finish drawing
-                setDrawings([...drawings, { ...drawingStatus, points: [...drawingStatus.points, { time, price }] }]);
-                setDrawingStatus(null);
-                if (activeTool !== 'measure') setActiveTool('crosshair');
-            }
-        };
-
-        chart.subscribeClick(handleMouseDown);
-        return () => chart.unsubscribeClick(handleMouseDown);
-    }, [activeTool, drawingStatus, drawings, setDrawings, setActiveTool]);
-
-    // Render drawings
-    useEffect(() => {
-        if (!chartRef.current) return;
-        removeAllDrawings();
-
-        const chart = chartRef.current;
-
-        // Render existing drawings
-        drawings.forEach((d) => {
-            if (d.type === 'horzline') {
-                const line = chart.addSeries(LineSeries, {
-                    color: '#2962ff',
-                    lineWidth: 2,
-                    lineStyle: 0,
-                    lastValueVisible: false,
-                    priceLineVisible: false,
-                });
-                line.setData([
-                    { time: candles[0]?.time as UTCTimestamp, value: d.points[0].price },
-                    { time: candles[candles.length - 1]?.time as UTCTimestamp, value: d.points[0].price },
-                ]);
-                drawingSeriesRef.current.push(line);
-            } else if (d.type === 'trendline' || d.type === 'ray') {
-                const line = chart.addSeries(LineSeries, {
-                    color: '#2962ff',
-                    lineWidth: 2,
-                    priceLineVisible: false,
-                    lastValueVisible: false,
-                });
-                // Simple 2-point line
-                const sortedPoints = [...d.points].sort((a, b) => a.time - b.time);
-                line.setData(sortedPoints.map(p => ({ time: p.time as UTCTimestamp, value: p.price })));
-                drawingSeriesRef.current.push(line);
-            } else if (d.type === 'text') {
-                // Use markers for text labels
-                const candleSeries = seriesRef.current?.candle as any;
-                if (candleSeries && typeof candleSeries.setMarkers === 'function') {
-                    candleSeries.setMarkers([
-                        ...(candleSeries.markers?.() || []),
-                        {
-                            time: d.points[0].time as UTCTimestamp,
-                            position: 'aboveBar',
-                            color: theme === 'dark' ? '#fff' : '#000',
-                            shape: 'arrowUp',
-                            text: d.text,
-                        }
-                    ]);
-                }
-            }
-        });
-
-    }, [drawings, candles, removeAllDrawings, theme]);
-
-    // Real-time updates
-    const latestCandle = useMarketStore(s => s.latestCandle);
-    useEffect(() => {
-        if (!seriesRef.current || !latestCandle) return;
-
-        const formatted = formatCandleData(latestCandle);
-        seriesRef.current.candle.update(formatted);
-        seriesRef.current.volume.update({
-            time: latestCandle.time as UTCTimestamp,
-            value: latestCandle.volume,
-            color: latestCandle.close >= latestCandle.open ? 'rgba(38, 166, 154, 0.5)' : 'rgba(239, 83, 80, 0.5)',
-        });
-    }, [latestCandle, formatCandleData]);
-
-    // Recalculate and redraw indicator series whenever candles or enabled indicators change
-    useEffect(() => {
-        if (!chartRef.current) return;
-
+        if (!chartRef.current || !candles.length) return;
         removeAllIndicatorSeries();
-        if (!candles.length || enabledIndicators.length === 0) return;
-
         const chart = chartRef.current;
-        const closeValues = candles.map((candle) => candle.close);
-
-        const lineDataFromValues = (values: Array<number | null>) => (
-            values
-                .map((value, idx) => (value == null ? null : { time: candles[idx].time as UTCTimestamp, value }))
-                .filter((point): point is { time: UTCTimestamp; value: number } => point !== null)
-        );
+        const closeValues = candles.map(c => c.close);
+        const data = (vals: (number | null)[]) => vals.map((v, i) => v == null ? null : { time: candles[i].time as UTCTimestamp, value: v }).filter((p): p is { time: UTCTimestamp, value: number } => p !== null);
 
         if (enabledIndicators.includes('sma20')) {
-            const series = chart.addSeries(LineSeries, { color: INDICATOR_COLORS.sma20, lineWidth: 1, priceLineVisible: false, lastValueVisible: true });
-            series.setData(lineDataFromValues(calculateSMA(closeValues, 20)));
-            addLineIndicator(series);
+            const s = chart.addSeries(LineSeries, { color: INDICATOR_COLORS.sma20, lineWidth: 1 });
+            s.setData(data(calculateSMA(closeValues, 20)));
+            indicatorSeriesRef.current.line.push(s);
         }
-
-        if (enabledIndicators.includes('sma50')) {
-            const series = chart.addSeries(LineSeries, { color: INDICATOR_COLORS.sma50, lineWidth: 1, priceLineVisible: false, lastValueVisible: true });
-            series.setData(lineDataFromValues(calculateSMA(closeValues, 50)));
-            addLineIndicator(series);
-        }
-
-        if (enabledIndicators.includes('sma100')) {
-            const series = chart.addSeries(LineSeries, { color: INDICATOR_COLORS.sma100, lineWidth: 1, priceLineVisible: false, lastValueVisible: true });
-            series.setData(lineDataFromValues(calculateSMA(closeValues, 100)));
-            addLineIndicator(series);
-        }
-
-        if (enabledIndicators.includes('ema20')) {
-            const series = chart.addSeries(LineSeries, { color: INDICATOR_COLORS.ema20, lineWidth: 1, priceLineVisible: false, lastValueVisible: true });
-            series.setData(lineDataFromValues(calculateEMA(closeValues, 20)));
-            addLineIndicator(series);
-        }
-
-        if (enabledIndicators.includes('ema50')) {
-            const series = chart.addSeries(LineSeries, { color: INDICATOR_COLORS.ema50, lineWidth: 1, priceLineVisible: false, lastValueVisible: true });
-            series.setData(lineDataFromValues(calculateEMA(closeValues, 50)));
-            addLineIndicator(series);
-        }
-
-        if (enabledIndicators.includes('ema100')) {
-            const series = chart.addSeries(LineSeries, { color: INDICATOR_COLORS.ema100, lineWidth: 1, priceLineVisible: false, lastValueVisible: true });
-            series.setData(lineDataFromValues(calculateEMA(closeValues, 100)));
-            addLineIndicator(series);
-        }
-
         if (enabledIndicators.includes('vwap')) {
-            const series = chart.addSeries(LineSeries, {
-                color: INDICATOR_COLORS.vwap,
-                lineWidth: 1,
-                lineStyle: 2,
-                priceLineVisible: false,
-                lastValueVisible: true,
-            });
-            series.setData(lineDataFromValues(calculateVWAP(candles)));
-            addLineIndicator(series);
+            const s = chart.addSeries(LineSeries, { color: INDICATOR_COLORS.vwap, lineWidth: 1, lineStyle: 2 });
+            s.setData(data(calculateVWAP(candles)));
+            indicatorSeriesRef.current.line.push(s);
         }
-
-        if (enabledIndicators.includes('bb20')) {
-            const bands = calculateBollingerBands(closeValues, 20, 2);
-            const middle = chart.addSeries(LineSeries, { color: '#94a3b8', lineWidth: 1, lineStyle: 1, priceLineVisible: false, lastValueVisible: false });
-            const upper = chart.addSeries(LineSeries, { color: INDICATOR_COLORS.bb20, lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false });
-            const lower = chart.addSeries(LineSeries, { color: INDICATOR_COLORS.bb20, lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false });
-
-            middle.setData(lineDataFromValues(bands.middle));
-            upper.setData(lineDataFromValues(bands.upper));
-            lower.setData(lineDataFromValues(bands.lower));
-
-            addLineIndicator(middle);
-            addLineIndicator(upper);
-            addLineIndicator(lower);
-        }
-
-        if (enabledIndicators.includes('rsi14')) {
-            const series = chart.addSeries(LineSeries, {
-                color: INDICATOR_COLORS.rsi14,
-                lineWidth: 1,
-                priceScaleId: 'rsi',
-                priceLineVisible: false,
-                lastValueVisible: true,
-            });
-            chart.priceScale('rsi').applyOptions({
-                borderColor: '#2a2e39',
-                scaleMargins: { top: 0.78, bottom: 0.1 },
-            });
-            series.setData(lineDataFromValues(calculateRSI(closeValues, 14)));
-            addLineIndicator(series);
-        }
-
-        if (enabledIndicators.includes('macd')) {
-            const macdValues = calculateMACD(closeValues, 12, 26, 9);
-            const macdLine = chart.addSeries(LineSeries, {
-                color: INDICATOR_COLORS.macd,
-                lineWidth: 1,
-                priceScaleId: 'macd',
-                priceLineVisible: false,
-                lastValueVisible: false,
-            });
-            const signalLine = chart.addSeries(LineSeries, {
-                color: '#fb7185',
-                lineWidth: 1,
-                priceScaleId: 'macd',
-                priceLineVisible: false,
-                lastValueVisible: false,
-            });
-            const histogram = chart.addSeries(HistogramSeries, {
-                priceScaleId: 'macd',
-                priceLineVisible: false,
-                lastValueVisible: false,
-            });
-
-            chart.priceScale('macd').applyOptions({
-                borderColor: '#2a2e39',
-                scaleMargins: { top: 0.84, bottom: 0.02 },
-            });
-
-            macdLine.setData(lineDataFromValues(macdValues.macd));
-            signalLine.setData(lineDataFromValues(macdValues.signal));
-            histogram.setData(
-                macdValues.histogram
-                    .map((value, idx) => (
-                        value == null
-                            ? null
-                            : {
-                                time: candles[idx].time as UTCTimestamp,
-                                value,
-                                color: value >= 0 ? 'rgba(38,166,154,0.5)' : 'rgba(239,83,80,0.5)',
-                            }
-                    ))
-                    .filter((point): point is { time: UTCTimestamp; value: number; color: string } => point !== null)
-            );
-
-            addLineIndicator(macdLine);
-            addLineIndicator(signalLine);
-            addHistogramIndicator(histogram);
-        }
-    }, [addHistogramIndicator, addLineIndicator, candles, enabledIndicators, removeAllIndicatorSeries]);
+    }, [candles, enabledIndicators, removeAllIndicatorSeries]);
 
     return (
-        <div className="chart-root">
-            {/* Main chart area */}
-            <div className="chart-body">
+        <div className="relative flex-1 flex flex-col h-full min-h-0 bg-bg-panel group/chart">
+            <div className="flex-1 flex overflow-hidden">
                 <ChartToolbar />
-                <div className="chart-canvas-wrap">
-                    {/* OHLCV overlay floats on top of chart */}
-                    <OHLCVOverlay />
-                    <IndicatorsOverlay />
-                    <div ref={chartContainerRef} className="chart-canvas" />
+                <div
+                    ref={chartContainerRef}
+                    className="flex-1 min-w-0 h-full relative z-0"
+                    style={{ minHeight: '300px', backgroundColor: '#131722' }}
+                >
+                    <OHLCVOverlay symbol={symbol} timeframe={timeframe} />
+                    <IndicatorsOverlay indicators={enabledIndicators} />
                 </div>
             </div>
         </div>

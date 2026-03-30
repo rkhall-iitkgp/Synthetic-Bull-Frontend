@@ -6,14 +6,12 @@ import {
 import useMarketStore from '../store/useMarketStore';
 
 export default function BotPanel({ onClose }: { onClose?: () => void }) {
-    const {
-        botStatus,
-        botConfigs,
-        setBotStatus,
-        updateBotConfig,
-        currentSymbol,
-        prices
-    } = useMarketStore();
+    const botStatus = useMarketStore(s => s.botStatus);
+    const botConfigs = useMarketStore(s => s.botConfigs);
+    const setBotStatus = useMarketStore(s => s.setBotStatus);
+    const updateBotConfig = useMarketStore(s => s.updateBotConfig);
+    const currentSymbol = useMarketStore(s => s.currentSymbol);
+    const prices = useMarketStore(s => s.prices);
 
     const [selectedBotId, setSelectedBotId] = useState<'market_maker' | 'alpha_bot'>('market_maker');
 
@@ -35,8 +33,8 @@ export default function BotPanel({ onClose }: { onClose?: () => void }) {
     ];
 
     const currentBot = bots.find(b => b.id === selectedBotId)!;
-    const config = botConfigs[selectedBotId];
-    const status = botStatus[selectedBotId];
+    const config = botConfigs[selectedBotId] || { spread: 0.1, size: 100, maxPosition: 1000, strategy: 'Trend Following', riskLevel: 'Low', timeframe: '1m' };
+    const status = botStatus[selectedBotId] || 'stopped';
     const currentPrice = prices[currentSymbol] || 0;
 
     const handleToggleBot = () => {

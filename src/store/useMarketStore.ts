@@ -141,17 +141,28 @@ function sanitizeCandles(input: Candle[]): Candle[] {
     return deduped;
 }
 
-interface MarketState {
-    candles: Candle[];
-    latestCandle: Candle | null;
+export interface TerminalWidget {
+    id: string;
+    type: 'chart' | 'orderbook' | 'watchlist' | 'bot' | 'scalper' | 'infopane';
+    symbol?: string;
+    // Widget-specific settings
+    timeframe?: number;
+    chartType?: string;
+    enabledIndicators?: string[];
+}
+
+export interface MarketState {
+    candlesMap: Record<string, Candle[]>;
+    latestCandles: Record<string, Candle>;
+    historySequences: Record<string, number>;
     timeframe: number; // in seconds
     currentSymbol: string;
     symbols: string[];
     tickers: { symbol: string; name: string; category: string }[];
     userId: string | null;
     crosshairData: CrosshairData | null;
-    orderBook: { bids: { price: number, qty: number }[], asks: { price: number, qty: number }[] };
-    recentTrades: Trade[];
+    orderBooks: Record<string, { bids: { price: number, qty: number }[], asks: { price: number, qty: number }[] }>;
+    recentTrades: Record<string, Trade[]>;
     lastPrice: number;
     priceChange24h: number;
     high24h: number;
@@ -164,7 +175,10 @@ interface MarketState {
     prices: Record<string, number>;
     priceChanges: Record<string, number>;
 
-    historySequence: number;
+    // Modular Terminal State
+    activeWidgets: TerminalWidget[];
+    widgetLinks: Record<string, string>; // widgetId -> colorLink (e.g., 'blue', 'red', 'none')
+    terminalLayout: any; // For future grid persistence
     portfolio: Portfolio;
     openOrders: Order[];
     wsConnected: boolean;
@@ -179,11 +193,11 @@ interface MarketState {
     setUserId: (uid: string | null) => void;
     resetSymbolData: () => void;
     setCrosshairData: (data: CrosshairData | null) => void;
-    setCandlesData: (candles: Candle[], latestCandle?: Candle | null) => void;
-    setLatestCandle: (candle: Candle) => void;
-    clearCandles: () => void;
-    setOrderBook: (bids: { price: number, qty: number }[], asks: { price: number, qty: number }[]) => void;
-    addTrade: (trade: Trade) => void;
+    setCandlesData: (key: string, candles: Candle[]) => void;
+    setLatestCandle: (key: string, candle: Candle) => void;
+    clearCandles: (key?: string) => void;
+    setOrderBook: (symbol: string, bids: { price: number, qty: number }[], asks: { price: number, qty: number }[]) => void;
+    addTrade: (symbol: string, trade: Trade) => void;
     setWsConnected: (connected: boolean) => void;
     addOrder: (order: Order) => void;
     removeOrder: (orderId: number) => void;
@@ -201,6 +215,15 @@ interface MarketState {
     clearDrawings: () => void;
     setBotStatus: (botId: string, status: 'running' | 'stopped' | 'standby') => void;
     updateBotConfig: (botId: string, config: any) => void;
+
+    // Widget Actions
+    addWidget: (type: 'chart' | 'orderbook' | 'watchlist' | 'scalper' | 'infopane', symbol?: string) => void;
+    removeWidget: (id: string) => void;
+    moveWidget: (id: string, direction: 'up' | 'down' | 'left' | 'right') => void;
+    setWidgetLink: (id: string, color: string) => void;
+    updateWidgetSymbol: (id: string, symbol: string) => void;
+    updateWidgetSettings: (id: string, settings: Partial<Pick<TerminalWidget, 'timeframe' | 'chartType' | 'enabledIndicators'>>) => void;
+    syncLinkedWidgets: (sourceWidgetId: string, symbol: string) => void;
 }
 
 const useMarketStore = create<MarketState>((set) => ({
@@ -212,8 +235,8 @@ const useMarketStore = create<MarketState>((set) => ({
     tickers: [],
     userId: null,
     crosshairData: null,
-    orderBook: { bids: [], asks: [] },
-    recentTrades: [],
+    orderBooks: {},
+    recentTrades: {},
     lastPrice: 0,
     priceChange24h: 0,
     high24h: 0,
@@ -225,7 +248,9 @@ const useMarketStore = create<MarketState>((set) => ({
     drawings: [],
     prices: {},
     priceChanges: {},
-    historySequence: 0,
+    candlesMap: {},
+    latestCandles: {},
+    historySequences: {},
 
     portfolio: {
         cash: 100000,
@@ -255,78 +280,86 @@ const useMarketStore = create<MarketState>((set) => ({
         }
     },
 
+    activeWidgets: [
+        { id: 'default-chart', type: 'chart', symbol: 'AAPL', timeframe: 1, chartType: 'Candles', enabledIndicators: [] },
+    ],
+    widgetLinks: {
+        'default-chart': 'blue',
+    },
+    terminalLayout: null,
+
     setTimeframe: (seconds) => set({ timeframe: seconds }),
     setCurrentSymbol: (symbol) => set({ currentSymbol: symbol }),
     setSymbols: (symbols) => set({ symbols }),
     setTickers: (tickers) => set({ tickers }),
     setUserId: (uid) => set({ userId: uid }),
-    resetSymbolData: () => set({
-        candles: [],
-        latestCandle: null,
-        orderBook: { bids: [], asks: [] },
-        recentTrades: [],
-    }),
+    resetSymbolData: () => set((state) => ({
+        candlesMap: {},
+        latestCandles: {},
+        orderBooks: { ...state.orderBooks, [state.currentSymbol]: { bids: [], asks: [] } },
+        recentTrades: { ...state.recentTrades, [state.currentSymbol]: [] },
+    })),
     setCrosshairData: (data) => set({ crosshairData: data }),
 
-    setCandlesData: (candles, latestCandle = null) => set((state) => {
-        const source = candles || state.candles;
-        const safeCandles = sanitizeCandles(source).slice(-2000);
-        const safeLatest = latestCandle
-            ? { ...latestCandle, time: normalizeCandleTime(latestCandle.time) }
-            : safeCandles[safeCandles.length - 1] || state.latestCandle;
+    setCandlesData: (key, candles) => set((state) => {
+        const safeCandles = sanitizeCandles(candles).slice(-2000);
+        const latest = safeCandles[safeCandles.length - 1] || null;
 
         return {
-            candles: safeCandles,
-            latestCandle: safeLatest,
-            prices: safeLatest ? { ...state.prices, [state.currentSymbol]: safeLatest.close } : state.prices,
-            lastPrice: safeLatest ? safeLatest.close : state.lastPrice,
-            historySequence: state.historySequence + 1,
+            candlesMap: { ...state.candlesMap, [key]: safeCandles },
+            latestCandles: latest ? { ...state.latestCandles, [key]: latest } : state.latestCandles,
+            historySequences: { ...state.historySequences, [key]: (state.historySequences[key] || 0) + 1 },
         };
     }),
 
-    setLatestCandle: (candle: Candle) => set((state) => {
+    setLatestCandle: (key: string, candle: Candle) => set((state) => {
         const normalizedCandle = { ...candle, time: normalizeCandleTime(candle.time) };
-        const updatedCandles = [...state.candles];
+        const updatedCandles = [...(state.candlesMap[key] || [])];
         const lastCandle = updatedCandles.length > 0 ? updatedCandles[updatedCandles.length - 1] : null;
 
         if (lastCandle) {
-            if (normalizedCandle.time < lastCandle.time) {
-                // Out of order old candle, ignore
-                return state;
-            } else if (normalizedCandle.time === lastCandle.time) {
-                // Duplicate timestamp, overwrite instead of pushing
+            if (normalizedCandle.time === lastCandle.time) {
                 updatedCandles[updatedCandles.length - 1] = normalizedCandle;
-            } else {
-                // Safely greater, push
+            } else if (normalizedCandle.time > lastCandle.time) {
                 updatedCandles.push(normalizedCandle);
             }
         } else {
             updatedCandles.push(normalizedCandle);
         }
 
-        if (updatedCandles.length > 2000) {
-            updatedCandles.shift();
-        }
+        if (updatedCandles.length > 2000) updatedCandles.shift();
+
         return {
-            latestCandle: normalizedCandle,
-            candles: updatedCandles,
-            lastPrice: normalizedCandle.close,
-            prices: { ...state.prices, [state.currentSymbol]: normalizedCandle.close }
+            latestCandles: { ...state.latestCandles, [key]: normalizedCandle },
+            candlesMap: { ...state.candlesMap, [key]: updatedCandles },
+            historySequences: { ...state.historySequences, [key]: (state.historySequences[key] || 0) + 1 }
         };
     }),
 
-    clearCandles: () => set((state) => ({ candles: [], latestCandle: null, historySequence: state.historySequence + 1 })),
+    clearCandles: (key) => set((state) => {
+        if (key) {
+            return {
+                candlesMap: { ...state.candlesMap, [key]: [] },
+                latestCandles: { ...state.latestCandles, [key]: null as any },
+                historySequences: { ...state.historySequences, [key]: (state.historySequences[key] || 0) + 1 }
+            };
+        }
+        return { candlesMap: {}, latestCandles: {}, historySequences: {} };
+    }),
 
-    setOrderBook: (bids, asks) => set({ orderBook: { bids, asks } }),
+    setOrderBook: (symbol, bids, asks) => set((state) => ({
+        orderBooks: { ...state.orderBooks, [symbol]: { bids, asks } }
+    })),
 
-    addTrade: (trade) => set((state) => {
+    addTrade: (symbol, trade) => set((state) => {
         const isNewHigh = trade.price > state.high24h;
         const isNewLow = trade.price < state.low24h;
+        const trades = state.recentTrades[symbol] || [];
         return {
-            recentTrades: [trade, ...state.recentTrades].slice(0, 50),
-            lastPrice: trade.price,
-            high24h: isNewHigh ? trade.price : state.high24h,
-            low24h: isNewLow ? trade.price : state.low24h
+            recentTrades: { ...state.recentTrades, [symbol]: [trade, ...trades].slice(0, 50) },
+            lastPrice: symbol === state.currentSymbol ? trade.price : state.lastPrice,
+            high24h: (symbol === state.currentSymbol && isNewHigh) ? trade.price : state.high24h,
+            low24h: (symbol === state.currentSymbol && isNewLow) ? trade.price : state.low24h
         };
     }),
 
@@ -388,6 +421,69 @@ const useMarketStore = create<MarketState>((set) => ({
             [botId]: { ...state.botConfigs[botId], ...config }
         }
     })),
+
+    addWidget: (type, symbol) => set((state) => ({
+        activeWidgets: [...state.activeWidgets, {
+            id: `widget-${Date.now()}`,
+            type,
+            symbol: symbol || state.currentSymbol,
+            ...(type === 'chart' ? {
+                timeframe: state.timeframe,
+                chartType: state.chartType,
+                enabledIndicators: state.enabledIndicators
+            } : {})
+        }]
+    })),
+
+    removeWidget: (id) => set((state) => ({
+        activeWidgets: state.activeWidgets.filter(w => w.id !== id),
+        widgetLinks: Object.fromEntries(Object.entries(state.widgetLinks).filter(([k]) => k !== id))
+    })),
+
+    moveWidget: (id, direction) => set((state) => {
+        const index = state.activeWidgets.findIndex(w => w.id === id);
+        if (index === -1) return state;
+        const newWidgets = [...state.activeWidgets];
+        if (direction === 'left' || direction === 'up') {
+            if (index > 0) [newWidgets[index], newWidgets[index - 1]] = [newWidgets[index - 1], newWidgets[index]];
+        } else {
+            if (index < newWidgets.length - 1) [newWidgets[index], newWidgets[index + 1]] = [newWidgets[index + 1], newWidgets[index]];
+        }
+        return { activeWidgets: newWidgets };
+    }),
+
+    setWidgetLink: (id, color) => set((state) => ({
+        widgetLinks: { ...state.widgetLinks, [id]: color }
+    })),
+
+    updateWidgetSymbol: (id, symbol) => set((state) => ({
+        activeWidgets: state.activeWidgets.map(w =>
+            w.id === id ? { ...w, symbol } : w
+        )
+    })),
+
+    updateWidgetSettings: (id, settings) => set((state) => ({
+        activeWidgets: state.activeWidgets.map(w =>
+            w.id === id ? { ...w, ...settings } : w
+        )
+    })),
+
+    syncLinkedWidgets: (sourceWidgetId, symbol) => set((state) => {
+        const sourceColor = state.widgetLinks[sourceWidgetId];
+        if (!sourceColor || sourceColor === 'none') return state;
+
+        const updatedWidgets = state.activeWidgets.map(w => {
+            if (w.id !== sourceWidgetId && state.widgetLinks[w.id] === sourceColor) {
+                return { ...w, symbol };
+            }
+            return w;
+        });
+
+        return {
+            activeWidgets: updatedWidgets,
+            currentSymbol: symbol // Also update the global current symbol for non-modular pages
+        };
+    }),
 }));
 
 export default useMarketStore;
