@@ -25,11 +25,14 @@ function fmtUsd(value: number): string {
 }
 
 // ─── Stat Card ───────────────────────────────────────────────
-function StatCard({ label, value, icon: Icon, change, subtitle }: {
-  label: string; value: string; icon: LucideIcon; change?: number; subtitle?: string;
+function StatCard({ label, value, icon: Icon, change, subtitle, onClick }: {
+  label: string; value: string; icon: LucideIcon; change?: number; subtitle?: string; onClick?: () => void;
 }) {
   return (
-    <div className="dash-card p-5 flex flex-col gap-3 group">
+    <div
+      className={`dash-card p-5 flex flex-col gap-3 group ${onClick ? 'cursor-pointer hover:border-accent/40 transition-colors' : ''}`}
+      onClick={onClick}
+    >
       <div className="flex items-center justify-between">
         <span className="text-[11px] font-semibold uppercase tracking-wider text-text-secondary">{label}</span>
         <div className="w-8 h-8 rounded-md dash-icon-bg flex items-center justify-center text-text-secondary group-hover:text-accent transition-colors">
@@ -123,13 +126,15 @@ export default function Dashboard() {
               label="Bot 1 P&L"
               value={fmtUsd(0)}
               icon={TrendingUp}
-              subtitle="Active"
+              subtitle="View Bots →"
+              onClick={() => navigate('/bots')}
             />
             <StatCard
               label="Bot 2 P&L"
               value={fmtUsd(0)}
               icon={Activity}
-              subtitle="Standby"
+              subtitle="View Bots →"
+              onClick={() => navigate('/bots')}
             />
           </div>
 
