@@ -1,6 +1,9 @@
 # Dependencies
 node_modules/
 
+#readme
+*.md
+
 # Build output
 dist/
 dist-ssr/

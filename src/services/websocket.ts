@@ -1,4 +1,6 @@
 import useMarketStore from '../store/useMarketStore';
+import { fetchCandleHistory } from './api';
+import { mergeCandleHistoryIntoCache, upsertCandleInCache } from './candleCache';
 
 export const candleWorker = new Worker(new URL('../workers/candleWorker.ts', import.meta.url), {
     type: 'module',
@@ -57,17 +59,60 @@ export function changeTimeframe(seconds: number) {
     }
 }
 
+async function loadCandleHistory(): Promise<void> {
+    try {
+        const history = await fetchCandleHistory();
+        const symbolEntries = Object.entries(history);
+        if (symbolEntries.length === 0) return;
+
+        for (const [symbol, candles] of Object.entries(history)) {
+            for (const c of candles) {
+                candleWorker.postMessage({ type: 'CANDLE_1S', payload: { ...c, symbol } });
+            }
+            fetchedSymbols.add(symbol);
+        }
+
+        // Ensure the chart gets an immediate HISTORY_UPDATE even if WS never opens.
+        const state = useMarketStore.getState();
+        const hasCurrentSymbolHistory = Array.isArray(history[state.currentSymbol]) && history[state.currentSymbol].length > 0;
+        if (!hasCurrentSymbolHistory) {
+            const [firstSymbolWithHistory] = symbolEntries.find(([, candles]) => candles.length > 0) || [];
+            if (firstSymbolWithHistory) {
+                state.setCurrentSymbol(firstSymbolWithHistory);
+            }
+        }
+
+        const nextState = useMarketStore.getState();
+        candleWorker.postMessage({
+            type: 'INIT',
+            payload: { timeframeSec: nextState.timeframe, symbol: nextState.currentSymbol }
+        });
+    } catch (err) {
+        console.warn('[candle-history] REST pre-load failed, will fall back to WS history:', err);
+    }
+}
+
 class WSManager {
     private url: string;
     private ws: WebSocket | null = null;
     private reconnectDelay = 1000;
     private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    private historyPreloaded = false;
 
     constructor(url: string) {
         this.url = url;
     }
 
     connect() {
+        if (!this.historyPreloaded) {
+            this.historyPreloaded = true;
+            loadCandleHistory().then(() => this._connect());
+            return;
+        }
+        this._connect();
+    }
+
+    private _connect() {
         this.ws = new WebSocket(this.url);
 
         this.ws.onopen = () => {
@@ -196,6 +241,8 @@ class WSManager {
                         volume: Number(c.v || 0),
                     }));
 
+                    mergeCandleHistoryIntoCache(String(msg.symbol || state.currentSymbol), candles);
+
                     if (candles.length > 0) {
                         const closePrice = candles[candles.length - 1].close;
                         const openPrice = candles[0].open;
@@ -228,6 +275,15 @@ class WSManager {
                         close: price,
                         volume: Number(msg.v || 0),
                     };
+
+                    upsertCandleInCache(next.symbol, {
+                        time: next.time,
+                        open: next.open,
+                        high: next.high,
+                        low: next.low,
+                        close: next.close,
+                        volume: next.volume,
+                    });
 
                     candleWorker.postMessage({ type: 'CANDLE_1S', payload: next });
                     return;

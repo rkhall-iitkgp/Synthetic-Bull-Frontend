@@ -1,4 +1,5 @@
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+import { getCachedCandleHistory, persistCandleHistory } from './candleCache';
 
 export interface Ticker {
     symbol: string;
@@ -88,5 +89,43 @@ export async function depositFunds(botId: string, amount: number): Promise<Depos
         throw new Error(err.detail || `HTTP ${res.status}`);
     }
     return await res.json();
+}
+
+export interface CandleData {
+    time: number;
+    open: number;
+    high: number;
+    low: number;
+    close: number;
+    volume: number;
+}
+
+export async function fetchCandleHistory(): Promise<Record<string, CandleData[]>> {
+    try {
+        const res = await fetch(`${API_BASE}/api/market/candles`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        const backendHistory = await res.json() as Record<string, CandleData[]>;
+        return persistCandleHistory(backendHistory);
+    } catch (backendErr) {
+        console.warn('[candle-history] Backend unavailable, using frontend cache fallback:', backendErr);
+    }
+
+    const localCache = getCachedCandleHistory();
+    if (Object.keys(localCache).length > 0) {
+        return localCache;
+    }
+
+    try {
+        const res = await fetch('/market_data_fallback.json', { cache: 'no-store' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        const fileHistory = await res.json() as Record<string, CandleData[]>;
+        return persistCandleHistory(fileHistory);
+    } catch (fileErr) {
+        console.warn('[candle-history] Static fallback file unavailable:', fileErr);
+    }
+
+    return {};
 }
 
