@@ -218,6 +218,7 @@ export interface MarketState {
     crosshairData: CrosshairData | null;
     orderBooks: Record<string, { bids: { price: number, qty: number }[], asks: { price: number, qty: number }[] }>;
     recentTrades: Record<string, Trade[]>;
+    userTrades: Trade[];
     lastPrice: number;
     priceChange24h: number;
     high24h: number;
@@ -261,6 +262,7 @@ export interface MarketState {
     clearCandles: (key?: string) => void;
     setOrderBook: (symbol: string, bids: { price: number, qty: number }[], asks: { price: number, qty: number }[]) => void;
     addTrade: (symbol: string, trade: Trade) => void;
+    addUserTrade: (trade: Trade) => void;
     setWsConnected: (connected: boolean) => void;
     addOrder: (order: Order) => void;
     removeOrder: (orderId: number) => void;
@@ -349,6 +351,7 @@ const useMarketStore = create<MarketState>()(
             crosshairData: null,
             orderBooks: {},
             recentTrades: {},
+            userTrades: [],
             lastPrice: 0,
             priceChange24h: 0,
             high24h: 0,
@@ -399,7 +402,11 @@ const useMarketStore = create<MarketState>()(
             notifications: [],
 
             setTimeframe: (seconds) => set({ timeframe: seconds }),
-            setCurrentSymbol: (symbol) => set({ currentSymbol: symbol }),
+            setCurrentSymbol: (symbol) => set((state) => ({
+                currentSymbol: symbol,
+                lastPrice: state.prices[symbol] ?? 0,
+                priceChange24h: state.priceChanges[symbol] ?? 0,
+            })),
             setSymbols: (symbols) => set({ symbols }),
             setTickers: (tickers) => set({ tickers }),
             setUserId: (uid) => set({ userId: uid }),
@@ -474,6 +481,10 @@ const useMarketStore = create<MarketState>()(
                     low24h: (symbol === state.currentSymbol && isNewLow) ? trade.price : state.low24h
                 };
             }),
+
+            addUserTrade: (trade) => set((state) => ({
+                userTrades: [trade, ...state.userTrades].slice(0, 500)
+            })),
 
             setWsConnected: (connected) => set({ wsConnected: connected }),
             addOrder: (order) => set((state) => ({ openOrders: [...state.openOrders, order] })),
@@ -694,6 +705,7 @@ const useMarketStore = create<MarketState>()(
             partialize: (state) => ({
                 watchlist: state.watchlist,
                 openOrders: state.openOrders,
+                userTrades: state.userTrades,
                 layoutId: state.layoutId,
                 syncSettings: state.syncSettings,
                 activeWidgets: state.activeWidgets,

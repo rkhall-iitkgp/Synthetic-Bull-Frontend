@@ -105,6 +105,23 @@ function processCandleInHistory(key: string, c: Candle) {
 
     const lastCandle = history.length > 0 ? history[history.length - 1] : null;
 
+    if (lastCandle && candleTime > lastCandle.time + timeframeSec) {
+        let carryTime = lastCandle.time + timeframeSec;
+        while (carryTime < candleTime) {
+            const carry: Candle = {
+                time: carryTime,
+                open: lastCandle.close,
+                high: lastCandle.close,
+                low: lastCandle.close,
+                close: lastCandle.close,
+                volume: 0,
+            };
+            history.push(carry);
+            self.postMessage({ type: 'CANDLE_UPDATE', key, candle: carry, isNew: true });
+            carryTime += timeframeSec;
+        }
+    }
+
     if (!lastCandle || candleTime > lastCandle.time) {
         const newCandle = { ...c, time: candleTime };
         history.push(newCandle);
@@ -127,6 +144,23 @@ function processTickInHistory(key: string, price: number, qty: number, timestamp
     if (!Number.isFinite(candleTime)) return;
 
     const lastCandle = history.length > 0 ? history[history.length - 1] : null;
+
+    if (lastCandle && candleTime > lastCandle.time + timeframeSec) {
+        let carryTime = lastCandle.time + timeframeSec;
+        while (carryTime < candleTime) {
+            const carry: Candle = {
+                time: carryTime,
+                open: lastCandle.close,
+                high: lastCandle.close,
+                low: lastCandle.close,
+                close: lastCandle.close,
+                volume: 0,
+            };
+            history.push(carry);
+            self.postMessage({ type: 'CANDLE_UPDATE', key, candle: carry, isNew: true });
+            carryTime += timeframeSec;
+        }
+    }
 
     if (!lastCandle || candleTime > lastCandle.time) {
         const newCandle: Candle = {

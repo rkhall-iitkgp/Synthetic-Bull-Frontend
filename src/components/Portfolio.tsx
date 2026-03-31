@@ -3,17 +3,28 @@ import useMarketStore from '../store/useMarketStore';
 
 export default function Portfolio({ onClose }: { onClose?: () => void }) {
     const portfolio = useMarketStore(s => s.portfolio);
-    const recentTrades = useMarketStore(s => s.recentTrades);
+    const userTrades = useMarketStore(s => s.userTrades);
     const isPnlPositive = portfolio.unrealizedPnl > 0;
 
-    // Flatten all trades from all symbols, sorted newest first
-    const allTrades = Object.values(recentTrades)
-        .flat()
+    // User trade history only, sorted newest first
+    const allTrades = [...userTrades]
         .sort((a, b) => {
             const timeA = typeof a.timestamp === 'number' ? a.timestamp : new Date(a.timestamp).getTime();
             const timeB = typeof b.timestamp === 'number' ? b.timestamp : new Date(b.timestamp).getTime();
             return timeB - timeA;
         });
+
+    const achievements = [
+        { id: 'starter', label: 'First Fill', hint: 'Execute your first trade', unlocked: allTrades.length > 0 },
+        { id: 'diversified', label: 'Diversified', hint: 'Hold at least 3 assets', unlocked: portfolio.holdings.length >= 3 },
+        { id: 'green', label: 'Green Session', hint: 'Keep unrealized P&L positive', unlocked: portfolio.unrealizedPnl > 0 },
+        {
+            id: 'crypto-pair',
+            label: 'Pair Trader',
+            hint: 'Hold both BTC and ETH',
+            unlocked: portfolio.holdings.some((h) => h.asset === 'BTC' && h.qty > 0) && portfolio.holdings.some((h) => h.asset === 'ETH' && h.qty > 0)
+        },
+    ];
 
     return (
         <div className="flex flex-col h-full bg-bg-terminal text-text-primary font-sans">
@@ -28,7 +39,7 @@ export default function Portfolio({ onClose }: { onClose?: () => void }) {
                         {isPnlPositive ? '▲' : portfolio.unrealizedPnl < 0 ? '▼' : ''} ${Math.abs(portfolio.unrealizedPnl).toFixed(2)}
                     </span>
                     {onClose && (
-                        <button onClick={onClose} className="p-1 hover:bg-white/5 rounded transition-colors">
+                        <button onClick={onClose} className="p-1 hover:bg-accent/10 rounded transition-colors">
                             <X size={14} className="text-text-secondary hover:text-text-primary" />
                         </button>
                     )}
@@ -83,6 +94,34 @@ export default function Portfolio({ onClose }: { onClose?: () => void }) {
                     </div>
                 )}
 
+                {/* Achievements */}
+                <div className="p-3 border-b border-border-subtle">
+                    <div className="flex items-center justify-between mb-3">
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-text-dim">Achievements</span>
+                        <span className="text-[10px] text-text-dim font-mono">
+                            {achievements.filter((a) => a.unlocked).length}/{achievements.length} unlocked
+                        </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                        {achievements.map((badge) => (
+                            <div
+                                key={badge.id}
+                                className={`rounded-md border px-2 py-2 transition-all ${badge.unlocked
+                                    ? 'border-bull/35 bg-bull/10'
+                                    : 'border-border-subtle/50 bg-bg-elevated/30'
+                                    }`}
+                            >
+                                <div className={`text-[10px] font-bold uppercase tracking-wider ${badge.unlocked ? 'text-bull' : 'text-text-secondary'}`}>
+                                    {badge.unlocked ? 'Unlocked' : 'Locked'}
+                                </div>
+                                <div className="text-[11px] font-semibold text-text-primary mt-0.5">{badge.label}</div>
+                                <div className="text-[9px] text-text-secondary mt-0.5">{badge.hint}</div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
                 {/* Trade History */}
                 <div className="p-3">
                     <div className="flex items-center justify-between mb-3">
@@ -98,7 +137,7 @@ export default function Portfolio({ onClose }: { onClose?: () => void }) {
                                 hour: '2-digit', minute: '2-digit'
                             });
                             return (
-                                <div key={i} className="grid grid-cols-[1fr_2fr_1.5fr] items-center gap-2 py-1.5 px-2 rounded hover:bg-white/5 transition-colors border border-transparent hover:border-border-subtle/30">
+                                <div key={i} className="grid grid-cols-[1fr_2fr_1.5fr] items-center gap-2 py-1.5 px-2 rounded hover:bg-accent/5 transition-colors border border-transparent hover:border-border-subtle/30">
                                     <span className={`text-[10px] font-bold ${isBuy ? 'text-bull' : 'text-bear'}`}>{isBuy ? 'BUY' : 'SELL'}</span>
                                     <div className="flex flex-col">
                                         <span className="text-[10px] font-medium">{trade.symbol}</span>

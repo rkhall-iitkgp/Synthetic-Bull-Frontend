@@ -8,6 +8,8 @@ import {
   ArrowUpRight, ArrowDownRight, X, ExternalLink, Activity
 } from 'lucide-react';
 import * as api from '../services/api';
+import SentimentFeed from './SentimentFeed';
+import MarketHeatmap from './MarketHeatmap';
 
 import type { LucideIcon } from 'lucide-react';
 
@@ -101,10 +103,29 @@ export default function Dashboard() {
       <Navbar />
 
       <main className="flex-1 min-h-0 overflow-y-auto styling-scrollbar">
-        <div className="max-w-[1600px] mx-auto px-6 py-6 flex flex-col gap-6">
+        <div className="max-w-[1680px] mx-auto px-5 md:px-7 py-6 md:py-8 flex flex-col gap-6 md:gap-7">
+
+          <section className="dash-card dash-card-glass px-5 py-4 md:px-6 md:py-5 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+            <div>
+              <h1 className="text-xl md:text-2xl font-semibold text-text-primary tracking-tight">NextBull Wealth Dashboard</h1>
+              <p className="text-xs text-text-secondary mt-1">Smart overview for portfolio, market pulse, and execution opportunities.</p>
+            </div>
+            <div className="flex items-center gap-2 md:gap-3">
+              <div className="px-3 py-2 rounded-lg border border-border-subtle bg-bg-elevated/70 text-xs font-medium">
+                {wsConnected ? 'Realtime mode enabled' : 'Awaiting market stream'}
+              </div>
+              <button
+                type="button"
+                onClick={() => navigate('/terminal')}
+                className="nb-btn-primary text-xs font-semibold uppercase tracking-wider"
+              >
+                Open Terminal
+              </button>
+            </div>
+          </section>
 
           {/* ── Row 1: Stat Cards ── */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3.5 md:gap-4">
             <StatCard
               label="Portfolio Value"
               value={fmtUsd(portfolio.totalValue)}
@@ -135,6 +156,15 @@ export default function Dashboard() {
               icon={Activity}
               subtitle={bots[1] ? "Active" : "Standby"}
             />
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-5 gap-4 md:gap-5">
+            <div className="xl:col-span-3">
+              <MarketHeatmap />
+            </div>
+            <div className="xl:col-span-2">
+              <SentimentFeed />
+            </div>
           </div>
 
           {/* ── Row 2: Holdings Table ── */}
@@ -210,7 +240,7 @@ export default function Dashboard() {
           </div>
 
           {/* ── Row 3: Market Overview + Open Orders ── */}
-          <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 md:gap-6">
 
             {/* Market Overview (3 cols) */}
             <div className="lg:col-span-3 dash-card overflow-hidden flex flex-col">

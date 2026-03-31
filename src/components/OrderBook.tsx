@@ -23,7 +23,7 @@ const OrderBook = React.memo(function OrderBook({ symbol: propSymbol }: { symbol
     return (
         <div className="tv-orderbook">
             {/* Header - minimized */}
-            <div className="flex items-center justify-between px-2 py-1 border-b border-border-subtle bg-bg-panel/50">
+            <div className="flex items-center justify-between px-2 py-0.5 border-b border-border-subtle bg-bg-panel/50">
                 <div className="tv-ob-modes flex gap-1">
                     <button className={`p-0.5 rounded ${displayMode === 'both' ? 'bg-accent/20' : ''}`} onClick={() => setDisplayMode('both')}>
                         <div className="w-3 h-3 flex flex-col gap-0.5"><div className="bg-bear h-1 w-full rounded-sm" /><div className="bg-bull h-1 w-full rounded-sm" /></div>
@@ -65,7 +65,7 @@ const OrderBook = React.memo(function OrderBook({ symbol: propSymbol }: { symbol
             )}
 
             {/* Spread / Last Price - compact */}
-            <div className="flex items-center justify-between px-2 py-1 bg-white/5 border-y border-border-subtle/30">
+            <div className="flex items-center justify-between px-2 py-0.5 bg-white/5 border-y border-border-subtle/30">
                 <span className="text-xs font-bold font-mono text-text-primary">{lastPrice.toFixed(2)}</span>
                 <span className="text-[9px] text-text-secondary font-mono">
                     Spread: {spread.toFixed(2)} ({spreadPct.toFixed(3)}%)

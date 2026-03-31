@@ -5,6 +5,7 @@ import BotPanel from './BotPanel';
 import TradePanel from './TradePanel';
 import Portfolio from './Portfolio';
 import OpenOrders from './OpenOrders';
+import RecentTrades from './RecentTrades';
 import { List, BarChart2, Cpu, Wallet, ClipboardList } from 'lucide-react';
 import useMarketStore from '../store/useMarketStore';
 
@@ -21,6 +22,13 @@ const TABS: { id: TabId; label: string; icon: any }[] = [
 export default function SidePane({ activeTab: propActiveTab }: { activeTab?: TabId }) {
     const [localTab, setLocalTab] = useState<TabId>(propActiveTab || 'watchlist');
     const currentSymbol = useMarketStore(s => s.currentSymbol);
+    const activeWidgets = useMarketStore(s => s.activeWidgets);
+    const activePaneId = useMarketStore(s => s.activePaneId);
+
+    const activeSymbol = (() => {
+        const activeWidget = activeWidgets.find(w => w.id === activePaneId);
+        return activeWidget?.symbol || currentSymbol;
+    })();
 
     // When the nav icon changes (e.g. user clicks "Orders" icon), jump to that tab
     useEffect(() => {
@@ -31,24 +39,6 @@ export default function SidePane({ activeTab: propActiveTab }: { activeTab?: Tab
 
     return (
         <div className="flex flex-col h-full bg-bg-terminal border-l border-border-subtle">
-            {/* Tab Headers */}
-            <div className="flex border-b border-border-subtle bg-bg-elevated/30 overflow-x-auto shrink-0">
-                {TABS.map(({ id, label, icon: Icon }) => (
-                    <button
-                        key={id}
-                        onClick={() => setLocalTab(id)}
-                        className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-[10px] font-bold uppercase tracking-wide transition-colors border-b-2 whitespace-nowrap px-2 ${
-                            activeTab === id
-                                ? 'border-accent text-accent bg-accent/5'
-                                : 'border-transparent text-text-secondary hover:text-text-primary'
-                        }`}
-                    >
-                        <Icon size={11} />
-                        {label}
-                    </button>
-                ))}
-            </div>
-
             {/* Tab Content */}
             <div className="flex-1 min-h-0 overflow-hidden">
                 {activeTab === 'watchlist' && (
@@ -58,8 +48,16 @@ export default function SidePane({ activeTab: propActiveTab }: { activeTab?: Tab
                 )}
 
                 {activeTab === 'book' && (
-                    <div className="h-full flex flex-col overflow-y-auto styling-scrollbar bg-bg-panel">
-                        <OrderBook symbol={currentSymbol} />
+                    <div className="h-full flex flex-col overflow-hidden bg-bg-panel">
+                        <div className="flex-shrink-0 overflow-hidden">
+                            <OrderBook symbol={activeSymbol} />
+                        </div>
+                        <div className="border-t border-border-subtle flex-shrink-0 overflow-hidden">
+                            <TradePanel symbol={activeSymbol} />
+                        </div>
+                        <div className="border-t border-border-subtle flex-1 min-h-0 overflow-y-auto styling-scrollbar">
+                            <RecentTrades symbol={activeSymbol} />
+                        </div>
                     </div>
                 )}
 

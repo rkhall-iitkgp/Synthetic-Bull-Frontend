@@ -52,7 +52,7 @@ export default function AdminDashboard() {
         <div className="max-w-6xl mx-auto space-y-8">
           <header className="flex justify-between items-end">
             <div>
-              <h1 className="text-4xl font-bold tracking-tight text-white mb-2">Simulated Universe</h1>
+              <h1 className="text-4xl font-bold tracking-tight text-text-primary mb-2">Simulated Universe</h1>
               <p className="text-text-secondary text-lg">Manage your automated trading intelligence.</p>
             </div>
 

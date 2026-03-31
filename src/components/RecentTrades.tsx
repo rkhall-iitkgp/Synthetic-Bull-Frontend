@@ -5,34 +5,26 @@ const EMPTY_TRADES: any[] = [];
 export default function RecentTrades({ symbol: propSymbol }: { symbol?: string }) {
     const globalSymbol = useMarketStore(state => state.currentSymbol);
     const symbol = propSymbol || globalSymbol;
-    const trades = useMarketStore(state => state.recentTrades[symbol] || EMPTY_TRADES);
+    const userTrades = useMarketStore(state => state.userTrades);
+    const symbolTrades = userTrades.filter(t => t.symbol === symbol);
+
+    const avgPrice = symbolTrades.length > 0
+        ? (symbolTrades.reduce((sum, t) => sum + t.price * t.qty, 0) / symbolTrades.reduce((sum, t) => sum + t.qty, 0))
+        : 0;
+    const totalQty = symbolTrades.reduce((sum, t) => sum + t.qty, 0);
 
     return (
         <div className="tv-trades">
-            {/* Column headers */}
-            <div className="tv-trades-header">
-                <span>Time</span>
-                <span>Price</span>
-                <span>Amount</span>
-            </div>
-
-            <div className="tv-trades-list styling-scrollbar">
-                {trades.map((trade, i) => {
-                    const isBuy = trade.side.toUpperCase() === 'BUY';
-                    const tDate = new Date(trade.timestamp);
-                    const timeStr = `${tDate.getHours().toString().padStart(2, '0')}:${tDate.getMinutes().toString().padStart(2, '0')}:${tDate.getSeconds().toString().padStart(2, '0')}`;
-
-                    return (
-                        <div key={`${trade.id}-${trade.timestamp}-${i}`} className="tv-trade-row">
-                            <span className="tv-trade-time">{timeStr}</span>
-                            <span className={`tv-trade-price ${isBuy ? 'up' : 'down'}`}>
-                                {trade.price.toFixed(2)}
-                            </span>
-                            <span className="tv-trade-amount">{trade.qty}</span>
-                        </div>
-                    );
-                })}
-                {trades.length === 0 && <div className="tv-trades-empty">No recent trades</div>}
+            <div className="tv-trades-list styling-scrollbar-hidden">
+                {symbolTrades.length > 0 ? (
+                    <div className="tv-trade-row">
+                        <span className="tv-trade-symbol font-semibold">{symbol}</span>
+                        <span className="tv-trade-price">{avgPrice.toFixed(2)}</span>
+                        <span className="tv-trade-amount">{totalQty.toFixed(4)}</span>
+                    </div>
+                ) : (
+                    <div className="tv-trades-empty">No recent trades</div>
+                )}
             </div>
         </div>
     );

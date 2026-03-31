@@ -33,14 +33,14 @@ function SideNavIcon({
     return (
         <button
             onClick={onClick}
-            className={`group relative flex flex-col items-center gap-1 p-2 rounded-lg transition-all duration-150 ${active
-                    ? 'text-accent bg-accent/10'
-                    : 'text-text-secondary hover:text-text-primary hover:bg-white/5'
+            className={`group relative flex flex-col items-center gap-2 p-3 rounded-lg transition-all duration-150 ${active
+                ? 'text-accent bg-accent/10 shadow-lg shadow-accent/20'
+                : 'text-text-secondary hover:text-text-primary hover:bg-accent/5'
                 }`}
             title={label}
         >
-            <Icon size={18} strokeWidth={active ? 2.5 : 2} />
-            <span className={`text-[9px] font-medium ${active ? 'opacity-100' : 'opacity-60 group-hover:opacity-100'}`}>
+            <Icon size={28} strokeWidth={active ? 2.6 : 2.1} />
+            <span className={`text-[10px] font-medium transition-opacity duration-150 ${active ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
                 {label}
             </span>
             {active && (
@@ -165,7 +165,7 @@ export default function Terminal() {
                     )}
                 </div>
 
-                <div className="w-14 shrink-0 flex flex-col bg-bg-terminal border-l border-border-subtle items-center py-3 gap-4 z-10 transition-colors">
+                <div className="w-16 shrink-0 flex flex-col bg-bg-terminal border-l border-border-subtle items-center py-4 gap-6 z-10 transition-colors">
                     {SIDE_NAV_ITEMS.map(({ id, icon, label }) => (
                         <SideNavIcon
                             key={id}

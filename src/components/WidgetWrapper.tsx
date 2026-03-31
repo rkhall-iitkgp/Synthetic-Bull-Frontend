@@ -33,14 +33,14 @@ export const WidgetWrapper: React.FC<WidgetWrapperProps> = ({ id, title, control
                     <div className="flex items-center opacity-0 group-hover/widget:opacity-100 transition-opacity">
                         <button
                             onClick={() => moveWidget(id, 'left')}
-                            className="p-1 hover:bg-white/5 text-text-secondary hover:text-text-primary transition-colors"
+                            className="p-1 hover:bg-accent/10 text-text-secondary hover:text-text-primary transition-colors"
                             title="Move Left"
                         >
                             <ChevronLeft size={12} />
                         </button>
                         <button
                             onClick={() => moveWidget(id, 'right')}
-                            className="p-1 hover:bg-white/5 text-text-secondary hover:text-text-primary transition-colors"
+                            className="p-1 hover:bg-accent/10 text-text-secondary hover:text-text-primary transition-colors"
                             title="Move Right"
                         >
                             <ChevronRight size={12} />

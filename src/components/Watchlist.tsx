@@ -23,7 +23,6 @@ export default function Watchlist({ onClose, widgetId }: { onClose?: () => void,
             setCurrentSymbol(symbol);
         }
 
-        useMarketStore.getState().clearCandles();
         if (!isStreamCached(symbol, useMarketStore.getState().timeframe)) {
             requestHistory(symbol);
         }
@@ -121,9 +120,9 @@ export default function Watchlist({ onClose, widgetId }: { onClose?: () => void,
                         <span className="text-sm font-bold text-text-primary uppercase">{currentSymbol}</span>
                     </div>
                     <div className="flex items-center gap-3 text-text-secondary">
-                        <LayoutGrid size={16} className="cursor-pointer hover:text-white" />
-                        <Pencil size={15} className="cursor-pointer hover:text-white" />
-                        <MoreHorizontal size={16} className="cursor-pointer hover:text-white" />
+                        <LayoutGrid size={16} className="cursor-pointer hover:text-text-primary" />
+                        <Pencil size={15} className="cursor-pointer hover:text-text-primary" />
+                        <MoreHorizontal size={16} className="cursor-pointer hover:text-text-primary" />
                     </div>
                 </div>
 

@@ -60,18 +60,6 @@ export default function LayoutPicker({ onClose }: LayoutPickerProps) {
         <div
             ref={ref}
             className="layout-picker-panel"
-            style={{
-                position: 'absolute',
-                top: 'calc(100% + 4px)',
-                right: 0,
-                zIndex: 200,
-                background: '#1e222d',
-                border: '1px solid #2a2e39',
-                borderRadius: '6px',
-                boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
-                padding: '12px',
-                minWidth: '200px',
-            }}
         >
             <div className="text-[10px] font-bold uppercase tracking-widest text-text-secondary mb-2">Layout</div>
             <div className="grid grid-cols-4 gap-1.5">
@@ -80,11 +68,7 @@ export default function LayoutPicker({ onClose }: LayoutPickerProps) {
                         key={tpl.id}
                         title={tpl.label}
                         onClick={() => { setLayout(tpl.id); onClose(); }}
-                        className="flex items-center justify-center p-1.5 rounded transition-all"
-                        style={{
-                            background: layoutId === tpl.id ? 'rgba(41,98,255,0.2)' : 'transparent',
-                            border: layoutId === tpl.id ? '1px solid #2962ff' : '1px solid #2a2e39',
-                        }}
+                        className={`layout-picker-btn ${layoutId === tpl.id ? 'active' : ''}`}
                     >
                         <LayoutIcon id={tpl.id} />
                     </button>

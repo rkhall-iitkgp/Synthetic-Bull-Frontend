@@ -76,6 +76,9 @@ class WSManager {
     }
 
     connect() {
+        if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
+            return;
+        }
         this.ws = new WebSocket(this.url);
 
         this.ws.onopen = () => {
@@ -122,6 +125,16 @@ class WSManager {
                     if (symbols.length > 0) {
                         state.setSymbols(symbols);
                         state.setTickers(tickers);
+
+                        rawSymbols.forEach((item: any) => {
+                            if (typeof item === 'string') return;
+                            const sym = item.symbol;
+                            if (!sym) return;
+                            const rawPrice = Number(item.price ?? item.last ?? item.last_price);
+                            if (!Number.isFinite(rawPrice) || rawPrice <= 0) return;
+                            const rawChange = Number(item.change_24h ?? item.change24h ?? item.change);
+                            state.setPrice(sym, rawPrice, Number.isFinite(rawChange) ? rawChange : undefined);
+                        });
                     }
                     if (msgType === 'welcome' && typeof msg.user_id === 'string') {
                         state.setUserId(msg.user_id);
@@ -141,15 +154,37 @@ class WSManager {
                     const price = Number(msg.price || 0);
                     const qty = Number(msg.qty || 0);
                     const ts = normalizeToMs(msg.ts ?? msg.t ?? msg.time ?? msg.timestamp);
+                    const buyer = typeof msg.buyer === 'string' ? msg.buyer : undefined;
+                    const seller = typeof msg.seller === 'string' ? msg.seller : undefined;
+                    const prevPrice = state.prices[sym] ?? state.lastPrice;
+                    const inferredSide: 'BUY' | 'SELL' = price >= prevPrice ? 'BUY' : 'SELL';
+
+                    const rawChange = Number(msg.change_24h ?? msg.change24h ?? msg.change_pct ?? msg.change);
+                    state.setPrice(sym, price, Number.isFinite(rawChange) ? rawChange : undefined);
 
                     state.addTrade(sym, {
                         id: Number(msg.id || 0),
                         symbol: sym,
                         price,
                         qty,
-                        side: price >= state.lastPrice ? 'BUY' : 'SELL',
+                        side: inferredSide,
                         timestamp: ts,
+                        buyer,
+                        seller,
                     });
+
+                    if (state.userId && (buyer === state.userId || seller === state.userId)) {
+                        state.addUserTrade({
+                            id: Number(msg.id || 0),
+                            symbol: sym,
+                            price,
+                            qty,
+                            side: buyer === state.userId ? 'BUY' : 'SELL',
+                            timestamp: ts,
+                            buyer,
+                            seller,
+                        });
+                    }
 
                     candleWorker.postMessage({
                         type: 'TICK',
@@ -173,6 +208,12 @@ class WSManager {
                 }
 
                 if (msgType === 'candle') {
+                    const close = Number(msg.c || 0);
+                    const rawChange = Number(msg.change_24h ?? msg.change24h ?? msg.change_pct ?? msg.change);
+                    if (Number.isFinite(close) && close > 0) {
+                        state.setPrice(String(msg.symbol || state.currentSymbol), close, Number.isFinite(rawChange) ? rawChange : undefined);
+                    }
+
                     const next = {
                         symbol: msg.symbol,
                         time: normalizeToSec(msg.t ?? msg.ts ?? msg.time),
@@ -224,6 +265,26 @@ class WSManager {
 
                 if (msgType === 'ack') {
                     console.log('Order accepted:', msg.order_id);
+
+                    const fills = Array.isArray(msg.fills) ? msg.fills : [];
+                    if (fills.length > 0) {
+                        const orderSide = String(msg.side || '').toUpperCase() === 'SELL' ? 'SELL' : 'BUY';
+                        const symbol = String(msg.symbol || state.currentSymbol);
+                        for (const fill of fills) {
+                            const fillPrice = Number(fill.price ?? 0);
+                            const fillQty = Number(fill.qty ?? fill.quantity ?? 0);
+                            const fillTs = normalizeToMs(fill.ts ?? fill.t ?? fill.time ?? Date.now());
+                            if (!Number.isFinite(fillPrice) || !Number.isFinite(fillQty) || fillQty <= 0) continue;
+                            state.addUserTrade({
+                                id: Number(fill.id ?? msg.order_id ?? Date.now()),
+                                symbol,
+                                price: fillPrice,
+                                qty: fillQty,
+                                side: orderSide,
+                                timestamp: fillTs,
+                            });
+                        }
+                    }
                     return;
                 }
 

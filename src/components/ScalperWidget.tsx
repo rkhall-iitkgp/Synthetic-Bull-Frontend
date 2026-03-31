@@ -55,7 +55,7 @@ export default function ScalperWidget({ symbol: propSymbol }: ScalperWidgetProps
             </div>
 
             {/* Position Summary */}
-            <div className="grid grid-cols-2 gap-2 p-2 bg-white/5 rounded-sm border border-white/5">
+            <div className="grid grid-cols-2 gap-2 p-2 bg-bg-elevated/40 rounded-sm border border-border-subtle/50">
                 <div>
                     <div className="text-[9px] text-text-secondary uppercase">Net Qty</div>
                     <div className={`text-xs font-mono font-bold ${currentQty > 0 ? 'text-bull' : currentQty < 0 ? 'text-bear' : 'text-text-primary'}`}>

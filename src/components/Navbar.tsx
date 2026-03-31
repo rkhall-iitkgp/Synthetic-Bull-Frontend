@@ -5,6 +5,11 @@ import { ModeToggle } from './mode-toggle';
 export function Navbar() {
   const navigate = useNavigate();
   const location = useLocation();
+  const pathname = location.pathname;
+
+  const isDashboard = pathname === '/user/dashboard' || pathname.startsWith('/user/dashboard/');
+  const isTerminal = pathname === '/terminal' || pathname.startsWith('/terminal/');
+  const isAdmin = pathname === '/admin/dashboard' || pathname.startsWith('/admin/dashboard/');
 
   return (
     <nav className="dash-navbar w-full h-14 flex items-center justify-between px-8 z-50">
@@ -28,9 +33,9 @@ export function Navbar() {
         <div className="h-5 w-px bg-border-subtle" />
         <button
           onClick={() => navigate('/user/dashboard')}
-          className={`flex items-center gap-2 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider rounded transition-all cursor-pointer ${location.pathname === '/user/dashboard'
-              ? 'bg-accent/10 text-accent border border-accent/20'
-              : 'text-text-secondary hover:text-text-primary dash-nav-btn'
+          className={`flex items-center gap-2 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider rounded transition-all cursor-pointer ${isDashboard
+              ? 'bg-accent/18 text-accent border border-accent/45 shadow-[0_0_0_1px_rgba(41,98,255,0.2)]'
+              : 'text-text-primary/80 hover:text-text-primary dash-nav-btn'
             }`}
         >
           <Activity className="w-3.5 h-3.5" />
@@ -38,9 +43,9 @@ export function Navbar() {
         </button>
         <button
           onClick={() => navigate('/terminal')}
-          className={`flex items-center gap-2 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider rounded transition-all cursor-pointer ${location.pathname === '/terminal'
-              ? 'bg-accent/10 text-accent border border-accent/20'
-              : 'text-text-secondary hover:text-text-primary dash-nav-btn'
+          className={`flex items-center gap-2 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider rounded transition-all cursor-pointer ${isTerminal
+              ? 'bg-accent/18 text-accent border border-accent/45 shadow-[0_0_0_1px_rgba(41,98,255,0.2)]'
+              : 'text-text-primary/80 hover:text-text-primary dash-nav-btn'
             }`}
         >
           <Monitor className="w-3.5 h-3.5" />
@@ -48,9 +53,9 @@ export function Navbar() {
         </button>
         <button
           onClick={() => navigate('/admin/dashboard')}
-          className={`flex items-center gap-2 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider rounded transition-all cursor-pointer ${location.pathname === '/admin/dashboard'
-              ? 'bg-accent/10 text-accent border border-accent/20'
-              : 'text-text-secondary hover:text-text-primary dash-nav-btn'
+          className={`flex items-center gap-2 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider rounded transition-all cursor-pointer ${isAdmin
+              ? 'bg-accent/18 text-accent border border-accent/45 shadow-[0_0_0_1px_rgba(41,98,255,0.2)]'
+              : 'text-text-primary/80 hover:text-text-primary dash-nav-btn'
             }`}
         >
           <ShieldAlert className="w-3.5 h-3.5" />

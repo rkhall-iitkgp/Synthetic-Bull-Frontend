@@ -97,7 +97,6 @@ export function TickerSearch({ widgetId }: { widgetId?: string }) {
             if (!isStreamCached(symbol, tf)) requestHistory(symbol);
         } else {
             setCurrentSymbol(symbol);
-            useMarketStore.getState().clearCandles();
             if (!isStreamCached(symbol, useMarketStore.getState().timeframe)) {
                 requestHistory(symbol);
             }
@@ -364,10 +363,12 @@ function Chart({ widgetId, symbol: propSymbol }: ChartProps) {
     const historySequence = useMarketStore(s => s.historySequences[streamKey]) || 0;
     const setCrosshairData = useMarketStore(s => s.setCrosshairData);
     const activeTool = useMarketStore(s => s.activeTool);
+    const activePaneId = useMarketStore(s => s.activePaneId);
     const setActiveTool = useMarketStore(s => s.setActiveTool);
     const drawings = useMarketStore(s => s.drawings);
     const setDrawings = useMarketStore(s => s.setDrawings);
     const clearDrawings = useMarketStore(s => s.clearDrawings);
+    const addNotification = useMarketStore(s => s.addNotification);
 
     const indicatorSeriesRef = useRef<IndicatorSeriesBucket>({ line: [], histogram: [] });
     const drawingSeriesRef = useRef<ISeriesApi<any>[]>([]);
@@ -450,7 +451,7 @@ function Chart({ widgetId, symbol: propSymbol }: ChartProps) {
             chartRef.current = null;
             seriesRef.current = null;
         };
-    }, [theme, chartType, symbol, timeframe]);
+    }, [theme, chartType]);
 
     // Data Sync
     useEffect(() => {
@@ -478,6 +479,44 @@ function Chart({ widgetId, symbol: propSymbol }: ChartProps) {
             });
         } catch (e) { console.warn('Chart update failed', e); }
     }, [latestCandle, formatCandleData]);
+
+    useEffect(() => {
+        const isCurrentPane = !widgetId || widgetId === activePaneId;
+        if (!isCurrentPane || !chartRef.current) return;
+
+        if (activeTool === 'screenshot') {
+            try {
+                const canvas = chartRef.current.takeScreenshot();
+                const link = document.createElement('a');
+                link.href = canvas.toDataURL('image/png');
+                link.download = `${symbol}-${timeframe}s-${Date.now()}.png`;
+                link.click();
+                addNotification('Chart screenshot saved', 'success');
+            } catch {
+                addNotification('Failed to capture screenshot', 'error');
+            } finally {
+                setActiveTool('crosshair');
+            }
+            return;
+        }
+
+        if (activeTool === 'zoom') {
+            const timeScale = chartRef.current.timeScale();
+            const range = timeScale.getVisibleLogicalRange();
+            if (range) {
+                const center = (range.from + range.to) / 2;
+                const half = Math.max(8, (range.to - range.from) * 0.35);
+                timeScale.setVisibleLogicalRange({ from: center - half, to: center + half });
+            }
+            setActiveTool('crosshair');
+            return;
+        }
+
+        if (activeTool === 'measure' || activeTool === 'text' || activeTool === 'fibonacci') {
+            addNotification(`${activeTool} tool is being refined. Use Trend Line / Ray / Horizontal Line for now.`, 'info');
+            setActiveTool('crosshair');
+        }
+    }, [activeTool, activePaneId, widgetId, symbol, timeframe, addNotification, setActiveTool]);
 
     // Shortcuts
     useEffect(() => {
