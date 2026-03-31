@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 
 export interface Trade {
     id: number;
@@ -105,6 +106,35 @@ export const AVAILABLE_SYMBOLS = [
     'AAPL', 'GOOGL', 'MSFT', 'AMZN', 'TSLA', 'META', 'NVDA', 'JPM', 'BTC', 'ETH'
 ];
 
+export interface LayoutTemplate {
+    id: string;
+    panes: number;
+    label: string;
+    gridTemplateColumns: string;
+    gridTemplateRows: string;
+    gridTemplateAreas: string;
+    paneAreaNames: string[];
+}
+
+export const LAYOUT_TEMPLATES: LayoutTemplate[] = [
+    { id: 'l1',   panes: 1, label: '1 Pane',       gridTemplateColumns: '1fr',       gridTemplateRows: '1fr',       gridTemplateAreas: '"a"',                 paneAreaNames: ['a'] },
+    { id: 'l2h',  panes: 2, label: '2 Horizontal',  gridTemplateColumns: '1fr 1fr',   gridTemplateRows: '1fr',       gridTemplateAreas: '"a b"',               paneAreaNames: ['a', 'b'] },
+    { id: 'l2v',  panes: 2, label: '2 Vertical',    gridTemplateColumns: '1fr',       gridTemplateRows: '1fr 1fr',   gridTemplateAreas: '"a" "b"',             paneAreaNames: ['a', 'b'] },
+    { id: 'l3h',  panes: 3, label: '3 Columns',     gridTemplateColumns: '1fr 1fr 1fr', gridTemplateRows: '1fr',     gridTemplateAreas: '"a b c"',             paneAreaNames: ['a', 'b', 'c'] },
+    { id: 'l4',   panes: 4, label: '4 Grid',        gridTemplateColumns: '1fr 1fr',   gridTemplateRows: '1fr 1fr',   gridTemplateAreas: '"a b" "c d"',         paneAreaNames: ['a', 'b', 'c', 'd'] },
+    { id: 'l1r2', panes: 3, label: '1+2 Right',     gridTemplateColumns: '2fr 1fr',   gridTemplateRows: '1fr 1fr',   gridTemplateAreas: '"a b" "a c"',         paneAreaNames: ['a', 'b', 'c'] },
+    { id: 'l2b1', panes: 3, label: '2+1 Bottom',    gridTemplateColumns: '1fr 1fr',   gridTemplateRows: '1fr 1fr',   gridTemplateAreas: '"a b" "c c"',         paneAreaNames: ['a', 'b', 'c'] },
+    { id: 'l1l3', panes: 4, label: '1+3 Side',      gridTemplateColumns: '3fr 1fr',   gridTemplateRows: '1fr 1fr 1fr', gridTemplateAreas: '"a b" "a c" "a d"', paneAreaNames: ['a', 'b', 'c', 'd'] },
+];
+
+export interface SyncSettings {
+    symbol: boolean;
+    interval: boolean;
+    crosshair: boolean;
+    time: boolean;
+    dateRange: boolean;
+}
+
 export const TIMEFRAMES = [
     { label: '1s', seconds: 1 },
     { label: '5s', seconds: 5 },
@@ -152,6 +182,9 @@ export interface TerminalWidget {
 }
 
 export interface MarketState {
+    activePaneId: string;
+    layoutId: string;
+    syncSettings: SyncSettings;
     candlesMap: Record<string, Candle[]>;
     latestCandles: Record<string, Candle>;
     historySequences: Record<string, number>;
@@ -216,6 +249,10 @@ export interface MarketState {
     setBotStatus: (botId: string, status: 'running' | 'stopped' | 'standby') => void;
     updateBotConfig: (botId: string, config: any) => void;
 
+    setActivePaneId: (id: string) => void;
+    setLayout: (layoutId: string) => void;
+    updateSyncSettings: (settings: Partial<SyncSettings>) => void;
+
     // Widget Actions
     addWidget: (type: 'chart' | 'orderbook' | 'watchlist' | 'scalper' | 'infopane', symbol?: string) => void;
     removeWidget: (id: string) => void;
@@ -226,7 +263,9 @@ export interface MarketState {
     syncLinkedWidgets: (sourceWidgetId: string, symbol: string) => void;
 }
 
-const useMarketStore = create<MarketState>((set) => ({
+const useMarketStore = create<MarketState>()(
+  persist(
+  (set) => ({
     candles: [],
     latestCandle: null,
     timeframe: 1, // 1 second default
@@ -287,6 +326,9 @@ const useMarketStore = create<MarketState>((set) => ({
         'default-chart': 'blue',
     },
     terminalLayout: null,
+    activePaneId: 'default-chart',
+    layoutId: 'l1',
+    syncSettings: { symbol: false, interval: false, crosshair: true, time: false, dateRange: false },
 
     setTimeframe: (seconds) => set({ timeframe: seconds }),
     setCurrentSymbol: (symbol) => set({ currentSymbol: symbol }),
@@ -422,6 +464,43 @@ const useMarketStore = create<MarketState>((set) => ({
         }
     })),
 
+    setActivePaneId: (id) => set({ activePaneId: id }),
+
+    setLayout: (newLayoutId) => set((state) => {
+        const template = LAYOUT_TEMPLATES.find(l => l.id === newLayoutId);
+        if (!template) return state;
+        const chartWidgets = state.activeWidgets.filter(w => w.type === 'chart');
+        const nonChartWidgets = state.activeWidgets.filter(w => w.type !== 'chart');
+        const needed = template.panes;
+        let updatedCharts = [...chartWidgets];
+        if (chartWidgets.length < needed) {
+            for (let i = chartWidgets.length; i < needed; i++) {
+                updatedCharts.push({
+                    id: `pane-${Date.now()}-${i}`,
+                    type: 'chart',
+                    symbol: chartWidgets[0]?.symbol || state.currentSymbol,
+                    timeframe: chartWidgets[0]?.timeframe || state.timeframe,
+                    chartType: chartWidgets[0]?.chartType || state.chartType,
+                    enabledIndicators: [],
+                });
+            }
+        } else if (chartWidgets.length > needed) {
+            updatedCharts = chartWidgets.slice(0, needed);
+        }
+        const newActivePaneId = updatedCharts.some(w => w.id === state.activePaneId)
+            ? state.activePaneId
+            : (updatedCharts[0]?.id || state.activePaneId);
+        return {
+            layoutId: newLayoutId,
+            activeWidgets: [...nonChartWidgets, ...updatedCharts],
+            activePaneId: newActivePaneId,
+        };
+    }),
+
+    updateSyncSettings: (settings) => set((state) => ({
+        syncSettings: { ...state.syncSettings, ...settings }
+    })),
+
     addWidget: (type, symbol) => set((state) => ({
         activeWidgets: [...state.activeWidgets, {
             id: `widget-${Date.now()}`,
@@ -484,6 +563,23 @@ const useMarketStore = create<MarketState>((set) => ({
             currentSymbol: symbol // Also update the global current symbol for non-modular pages
         };
     }),
-}));
+  }),
+  {
+    name: 'sb-terminal-store',
+    // Only persist state that should survive a page refresh.
+    // Real-time data (candles, prices, order book) is re-streamed by the backend on reconnect.
+    partialize: (state) => ({
+        watchlist:     state.watchlist,
+        openOrders:    state.openOrders,
+        layoutId:      state.layoutId,
+        syncSettings:  state.syncSettings,
+        activeWidgets: state.activeWidgets,   // restores chart pane symbols/timeframes
+        activePaneId:  state.activePaneId,
+        currentSymbol: state.currentSymbol,
+        botStatus:     state.botStatus,       // keep bot run/stop state
+        botConfigs:    state.botConfigs,      // keep bot configs
+    }),
+  }
+));
 
 export default useMarketStore;

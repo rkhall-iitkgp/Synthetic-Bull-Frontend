@@ -80,6 +80,12 @@ class WSManager {
             this.reconnectDelay = 1000;
             useMarketStore.getState().setWsConnected(true);
 
+            // Auth if we have an API key
+            const apiKey = localStorage.getItem('sb_api_key');
+            if (apiKey) {
+                this.send({ type: 'auth', api_key: apiKey });
+            }
+
             // Re-fetch history for active widgets
             fetchedStreams.clear();
             const state = useMarketStore.getState();
@@ -95,6 +101,11 @@ class WSManager {
                 const msg = JSON.parse(event.data);
                 const state = useMarketStore.getState();
                 const msgType = msg?.type;
+
+                if (msgType === 'auth_success') {
+                    console.log('Auth successful:', msg.role);
+                    return;
+                }
 
                 if (msgType === 'welcome' || msgType === 'symbols') {
                     const rawSymbols = Array.isArray(msg.symbols) ? msg.symbols : [];
@@ -192,6 +203,37 @@ class WSManager {
                     });
                     return;
                 }
+
+                if (msgType === 'open_orders') {
+                    const orders = Array.isArray(msg.orders) ? msg.orders.map((o: any) => ({
+                        order_id: o.order_id,
+                        symbol: o.symbol,
+                        side: o.side.toUpperCase(),
+                        type: 'limit', // default as backend currently only tracks limit in open_orders
+                        price: o.price,
+                        qty: o.orig_qty,
+                        remainingQty: o.remaining_qty,
+                        status: 'open'
+                    })) : [];
+                    state.setOpenOrders(orders);
+                    return;
+                }
+
+                if (msgType === 'ack') {
+                    console.log('Order accepted:', msg.order_id);
+                    // Could show toast here
+                    return;
+                }
+
+                if (msgType === 'cancel_ack') {
+                    console.log('Order cancel result:', msg.order_id, msg.success);
+                    return;
+                }
+
+                if (msgType === 'error') {
+                    console.error('Exchange error:', msg.message);
+                    return;
+                }
             } catch (e) {
                 console.warn('WS error:', e);
             }
@@ -209,6 +251,38 @@ class WSManager {
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
             this.ws.send(JSON.stringify(message));
         }
+    }
+
+    placeOrder(symbol: string, side: 'buy' | 'sell', type: 'limit' | 'market', qty: number, price?: number) {
+        this.send({
+            type: 'place_order',
+            symbol,
+            side,
+            order_type: type,
+            qty,
+            ...(price ? { price } : {})
+        });
+    }
+
+    cancelOrder(symbol: string, orderId: number) {
+        this.send({
+            type: 'cancel_order',
+            symbol,
+            order_id: orderId
+        });
+    }
+
+    disconnect() {
+        if (this.reconnectTimer) {
+            clearTimeout(this.reconnectTimer);
+            this.reconnectTimer = null;
+        }
+        if (this.ws) {
+            this.ws.onclose = null; // Prevent auto-reconnect
+            this.ws.close();
+            this.ws = null;
+        }
+        useMarketStore.getState().setWsConnected(false);
     }
 }
 

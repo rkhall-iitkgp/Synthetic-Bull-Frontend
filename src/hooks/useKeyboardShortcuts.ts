@@ -8,39 +8,80 @@ export const useKeyboardShortcuts = () => {
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
-            // Check if user is typing in an input
             const target = e.target as HTMLElement;
-            if (target.tagName.toLowerCase() === 'input' || target.tagName.toLowerCase() === 'textarea') {
+            const isTyping = target.tagName.toLowerCase() === 'input' || target.tagName.toLowerCase() === 'textarea';
+
+            // ── Trading shortcuts (always active) ──────────────────────
+            if (e.shiftKey && e.key.toUpperCase() === 'B') {
+                e.preventDefault();
+                wsManager.send({ type: 'limit_order', symbol: currentSymbol, side: 'BUY', price: lastPrice, qty: 1 });
+                return;
+            }
+            if (e.shiftKey && e.key.toUpperCase() === 'S') {
+                e.preventDefault();
+                wsManager.send({ type: 'limit_order', symbol: currentSymbol, side: 'SELL', price: lastPrice, qty: 1 });
                 return;
             }
 
-            // Shift + B = Buy
-            if (e.shiftKey && e.key.toUpperCase() === 'B') {
-                e.preventDefault();
-                wsManager.send({
-                    type: 'limit_order',
-                    symbol: currentSymbol,
-                    side: 'BUY',
-                    price: lastPrice,
-                    qty: 1
-                });
-            }
+            // ── Drawing / chart shortcuts (skip when typing in inputs) ──
+            if (isTyping) return;
 
-            // Shift + S = Sell
-            if (e.shiftKey && e.key.toUpperCase() === 'S') {
-                e.preventDefault();
-                wsManager.send({
-                    type: 'limit_order',
-                    symbol: currentSymbol,
-                    side: 'SELL',
-                    price: lastPrice,
-                    qty: 1
-                });
-            }
+            const store = useMarketStore.getState();
+            const { setActiveTool, clearDrawings } = store;
 
-            // Esc = Close / Reset
-            if (e.key === 'Escape') {
-                // Potential reset logic
+            switch (e.key) {
+                // Default / pointer
+                case 'Escape':
+                    setActiveTool('crosshair');
+                    break;
+
+                // Drawing tools
+                case 'l':
+                case 'L':
+                    setActiveTool('trendline');
+                    break;
+
+                case 'h':
+                case 'H':
+                    setActiveTool('horzline');
+                    break;
+
+                case 'r':
+                case 'R':
+                    setActiveTool('ray');
+                    break;
+
+                case 't':
+                case 'T':
+                    setActiveTool('text');
+                    break;
+
+                case 'p':
+                case 'P':
+                    setActiveTool('pencil');
+                    break;
+
+                case 'f':
+                case 'F':
+                    setActiveTool('fibonacci');
+                    break;
+
+                case 'm':
+                case 'M':
+                    setActiveTool('measure');
+                    break;
+
+                case 'z':
+                case 'Z':
+                    setActiveTool('zoom');
+                    break;
+
+                // Modifier combos
+                default:
+                    if (e.altKey) {
+                        if (e.key.toLowerCase() === 'c') { e.preventDefault(); clearDrawings(); }
+                        if (e.key.toLowerCase() === 's') { e.preventDefault(); /* screenshot handled in chart */ }
+                    }
             }
         };
 

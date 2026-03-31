@@ -41,13 +41,17 @@ const LIGHT_CHART = {
 };
 
 // ─── Ticker Search Component ────────────────────────────────────────────────
-export function TickerSearch() {
+export function TickerSearch({ widgetId }: { widgetId?: string }) {
     const [isOpen, setIsOpen] = useState(false);
     const [query, setQuery] = useState('');
     const [tab, setTab] = useState('All');
 
-    const currentSymbol = useMarketStore(s => s.currentSymbol);
+    const globalSymbol = useMarketStore(s => s.currentSymbol);
+    const widgetSymbol = useMarketStore(s => s.activeWidgets.find(w => w.id === widgetId)?.symbol);
+    const currentSymbol = (widgetId ? widgetSymbol : undefined) ?? globalSymbol;
     const setCurrentSymbol = useMarketStore(s => s.setCurrentSymbol);
+    const updateWidgetSymbol = useMarketStore(s => s.updateWidgetSymbol);
+    const syncSettings = useMarketStore(s => s.syncSettings);
     const watchlist = useMarketStore(s => s.watchlist);
     const addToWatchlist = useMarketStore(s => s.addToWatchlist);
     const removeFromWatchlist = useMarketStore(s => s.removeFromWatchlist);
@@ -81,13 +85,26 @@ export function TickerSearch() {
     }, [query, tab, tickers]);
 
     const handleSelect = useCallback((symbol: string) => {
-        setCurrentSymbol(symbol);
-        closeSearch();
-        useMarketStore.getState().clearCandles();
-        if (!isStreamCached(symbol, useMarketStore.getState().timeframe)) {
-            requestHistory(symbol);
+        if (widgetId) {
+            const store = useMarketStore.getState();
+            updateWidgetSymbol(widgetId, symbol);
+            // Propagate to all chart panes if symbol sync is on
+            if (syncSettings.symbol) {
+                store.activeWidgets
+                    .filter(w => w.type === 'chart' && w.id !== widgetId)
+                    .forEach(w => store.updateWidgetSymbol(w.id, symbol));
+            }
+            const tf = store.activeWidgets.find(w => w.id === widgetId)?.timeframe || store.timeframe;
+            if (!isStreamCached(symbol, tf)) requestHistory(symbol);
+        } else {
+            setCurrentSymbol(symbol);
+            useMarketStore.getState().clearCandles();
+            if (!isStreamCached(symbol, useMarketStore.getState().timeframe)) {
+                requestHistory(symbol);
+            }
         }
-    }, [setCurrentSymbol, closeSearch]);
+        closeSearch();
+    }, [widgetId, setCurrentSymbol, updateWidgetSymbol, syncSettings, closeSearch]);
 
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
@@ -252,8 +269,8 @@ function IndicatorsOverlay({ indicators }: { indicators: string[] }) {
     );
 }
 
-// ─── Chart Toolbar (Left side) ──────────────────────────────────────────────
-function ChartToolbar() {
+// ─── Chart Toolbar (Left side) — exported for global Terminal use ────────────
+export function ChartToolbar() {
     const activeTool = useMarketStore(s => s.activeTool);
     const setActiveTool = useMarketStore(s => s.setActiveTool);
     const clearDrawings = useMarketStore(s => s.clearDrawings);
@@ -467,17 +484,14 @@ function Chart({ widgetId, symbol: propSymbol }: ChartProps) {
     }, [candles, enabledIndicators, removeAllIndicatorSeries]);
 
     return (
-        <div className="relative flex-1 flex flex-col h-full min-h-0 bg-bg-panel group/chart">
-            <div className="flex-1 flex overflow-hidden">
-                <ChartToolbar />
-                <div
-                    ref={chartContainerRef}
-                    className="flex-1 min-w-0 h-full relative z-0"
-                    style={{ minHeight: '300px', backgroundColor: '#131722' }}
-                >
-                    <OHLCVOverlay symbol={symbol} timeframe={timeframe} />
-                    <IndicatorsOverlay indicators={enabledIndicators} />
-                </div>
+        <div className="relative flex-1 flex flex-col h-full min-h-0 bg-bg-panel">
+            <div
+                ref={chartContainerRef}
+                className="flex-1 min-w-0 w-full h-full relative z-0"
+                style={{ minHeight: '200px', backgroundColor: '#131722' }}
+            >
+                <OHLCVOverlay symbol={symbol} timeframe={timeframe} />
+                <IndicatorsOverlay indicators={enabledIndicators} />
             </div>
         </div>
     );

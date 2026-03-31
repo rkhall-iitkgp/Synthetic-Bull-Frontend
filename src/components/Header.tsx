@@ -6,41 +6,79 @@ import { useTheme } from '../store/ThemeContext';
 import { useNavigate } from 'react-router-dom';
 import {
     Menu, BarChart3, BarChart2, RotateCcw,
-    Search, Settings, ChevronDown, Maximize2, Sun, Moon, LayoutDashboard,
-    LayoutGrid, PlusSquare, Columns2
+    Search, Settings, Maximize2, Sun, Moon, LayoutDashboard,
+    ChevronDown, LayoutGrid,
 } from 'lucide-react';
+import type { IndicatorId } from '../store/useMarketStore';
+import LayoutPicker from './LayoutPicker';
 
 export default function Header() {
     const navigate = useNavigate();
     const { theme, toggleTheme } = useTheme();
-    const currentPrice = useMarketStore((state) => state.lastPrice);
-    const timeframe = useMarketStore((state) => state.timeframe);
-    const priceChange24h = useMarketStore((state) => state.priceChange24h);
-    const enabledIndicators = useMarketStore((state) => state.enabledIndicators);
-    const setIndicatorEnabled = useMarketStore((state) => state.setIndicatorEnabled);
-    const clearIndicators = useMarketStore((state) => state.clearIndicators);
 
+    // ── Active pane context ──────────────────────────────────────────────
+    const activePaneId = useMarketStore(s => s.activePaneId);
+    const allWidgets = useMarketStore(s => s.activeWidgets);
+    const activeWidget = allWidgets.find(w => w.id === activePaneId);
+    const allChartWidgets = allWidgets.filter(w => w.type === 'chart');
+    const updateWidgetSettings = useMarketStore(s => s.updateWidgetSettings);
+    const syncSettings = useMarketStore(s => s.syncSettings);
+
+    // Per-pane values (fall back to globals if widget not found)
+    const globalTimeframe = useMarketStore(s => s.timeframe);
+    const globalChartType = useMarketStore(s => s.chartType);
+    const timeframe = activeWidget?.timeframe ?? globalTimeframe;
+    const chartType = activeWidget?.chartType ?? globalChartType;
+    const enabledIndicators = (activeWidget?.enabledIndicators ?? []) as IndicatorId[];
+
+    // ── Per-pane setters ────────────────────────────────────────────────
+    const setTimeframeForPane = (seconds: number) => {
+        updateWidgetSettings(activePaneId, { timeframe: seconds });
+        changeTimeframe(seconds);
+        if (syncSettings.interval) {
+            allChartWidgets
+                .filter(w => w.id !== activePaneId)
+                .forEach(w => updateWidgetSettings(w.id, { timeframe: seconds }));
+        }
+    };
+
+    const setChartTypeForPane = (type: string) => {
+        updateWidgetSettings(activePaneId, { chartType: type });
+    };
+
+    const setIndicatorEnabledForPane = (id: IndicatorId, enabled: boolean) => {
+        const current = enabledIndicators;
+        const updated = enabled
+            ? [...current.filter(x => x !== id), id]
+            : current.filter(x => x !== id);
+        updateWidgetSettings(activePaneId, { enabledIndicators: updated });
+    };
+
+    const clearIndicatorsForPane = () => {
+        updateWidgetSettings(activePaneId, { enabledIndicators: [] });
+    };
+
+    // ── Dropdown state ──────────────────────────────────────────────────
     const [isIndicatorsOpen, setIsIndicatorsOpen] = useState(false);
     const [indicatorQuery, setIndicatorQuery] = useState('');
     const indicatorsRef = useRef<HTMLDivElement>(null);
 
-    const chartType = useMarketStore((state) => state.chartType);
-    const setChartType = useMarketStore((state) => state.setChartType);
     const [isChartTypeOpen, setIsChartTypeOpen] = useState(false);
     const chartTypesRef = useRef<HTMLDivElement>(null);
 
-    const filteredIndicators = useMemo(() => {
-        const query = indicatorQuery.trim().toLowerCase();
-        if (!query) return INDICATOR_LIBRARY;
+    const [isLayoutOpen, setIsLayoutOpen] = useState(false);
+    const layoutRef = useRef<HTMLDivElement>(null);
 
-        return INDICATOR_LIBRARY.filter((indicator) => (
-            indicator.label.toLowerCase().includes(query)
-            || indicator.description.toLowerCase().includes(query)
-            || indicator.category.toLowerCase().includes(query)
-        ));
+    const filteredIndicators = useMemo(() => {
+        const q = indicatorQuery.trim().toLowerCase();
+        if (!q) return INDICATOR_LIBRARY;
+        return INDICATOR_LIBRARY.filter(ind =>
+            ind.label.toLowerCase().includes(q) ||
+            ind.description.toLowerCase().includes(q) ||
+            ind.category.toLowerCase().includes(q)
+        );
     }, [indicatorQuery]);
 
-    // Group filtered indicators by category for better visual hierarchy
     const groupedIndicators = useMemo(() => {
         const groups: Record<string, typeof INDICATOR_LIBRARY> = {};
         for (const ind of filteredIndicators) {
@@ -51,25 +89,15 @@ export default function Header() {
     }, [filteredIndicators]);
 
     useEffect(() => {
-        const onOutsideClick = (event: MouseEvent) => {
-            if (!indicatorsRef.current?.contains(event.target as Node)) {
-                setIsIndicatorsOpen(false);
-            }
-            if (!chartTypesRef.current?.contains(event.target as Node)) {
-                setIsChartTypeOpen(false);
-            }
+        const onOutsideClick = (e: MouseEvent) => {
+            if (!indicatorsRef.current?.contains(e.target as Node)) setIsIndicatorsOpen(false);
+            if (!chartTypesRef.current?.contains(e.target as Node)) setIsChartTypeOpen(false);
         };
-
-        const onEscape = (event: KeyboardEvent) => {
-            if (event.key === 'Escape') {
-                setIsIndicatorsOpen(false);
-                setIsChartTypeOpen(false);
-            }
+        const onEscape = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') { setIsIndicatorsOpen(false); setIsChartTypeOpen(false); setIsLayoutOpen(false); }
         };
-
         document.addEventListener('mousedown', onOutsideClick);
         document.addEventListener('keydown', onEscape);
-
         return () => {
             document.removeEventListener('mousedown', onOutsideClick);
             document.removeEventListener('keydown', onEscape);
@@ -80,28 +108,27 @@ export default function Header() {
         <header className="tv-header">
             {/* Left section */}
             <div className="tv-header-left">
-                {/* Menu / Logo */}
                 <button type="button" className="tv-header-btn" title="Menu">
                     <Menu size={18} />
                 </button>
 
                 <div className="tv-header-separator" />
 
-                {/* Symbol selector — full TickerSearch modal */}
+                {/* Symbol selector — operates on active pane */}
                 <div className="flex items-center mx-1">
-                    <TickerSearch />
+                    <TickerSearch widgetId={activePaneId} />
                 </div>
 
                 <div className="tv-header-separator mx-1" />
 
-                {/* Timeframe selector */}
+                {/* Timeframe selector — per active pane */}
                 <div className="flex items-center gap-1 px-1">
                     {TIMEFRAMES.map(tf => (
                         <button
                             type="button"
                             key={tf.seconds}
                             className={`tv-header-tf-btn ${timeframe === tf.seconds ? 'active' : ''}`}
-                            onClick={() => changeTimeframe(tf.seconds)}
+                            onClick={() => setTimeframeForPane(tf.seconds)}
                         >
                             {tf.label}
                         </button>
@@ -114,16 +141,14 @@ export default function Header() {
                 <div className="tv-header-separator" />
 
                 {/* Chart Type selector */}
-                <div className="tv-chart-types-wrap" ref={chartTypesRef} style={{ position: 'relative' }}>
+                <div ref={chartTypesRef} style={{ position: 'relative' }}>
                     <button
                         type="button"
                         className={`tv-header-btn icon-text ${isChartTypeOpen ? 'active' : ''}`}
-                        onClick={() => setIsChartTypeOpen((prev) => !prev)}
-                        style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
+                        onClick={() => setIsChartTypeOpen(p => !p)}
                     >
                         <BarChart2 size={16} />
                     </button>
-
                     {isChartTypeOpen && (
                         <div className="tv-chart-type-dropdown" style={{
                             position: 'absolute', top: '100%', left: 0, marginTop: '8px',
@@ -132,7 +157,7 @@ export default function Header() {
                             borderRadius: '6px', zIndex: 100, display: 'flex', flexDirection: 'column',
                             minWidth: '160px', overflow: 'hidden', boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
                         }}>
-                            {['Candles', 'Hollow candles', 'Line', 'Area', 'Baseline'].map((type) => (
+                            {['Candles', 'Hollow candles', 'Line', 'Area', 'Baseline'].map(type => (
                                 <button
                                     key={type}
                                     style={{
@@ -141,7 +166,7 @@ export default function Header() {
                                         color: chartType === type ? '#2962FF' : (theme === 'dark' ? '#d1d4dc' : '#131722'),
                                         border: 'none', cursor: 'pointer', fontSize: '13px'
                                     }}
-                                    onClick={() => { setChartType(type); setIsChartTypeOpen(false); }}
+                                    onClick={() => { setChartTypeForPane(type); setIsChartTypeOpen(false); }}
                                     onMouseEnter={e => e.currentTarget.style.background = theme === 'dark' ? '#2a2e39' : '#f0f3fa'}
                                     onMouseLeave={e => e.currentTarget.style.background = chartType === type ? (theme === 'dark' ? '#2a2e39' : '#f0f3fa') : 'transparent'}
                                 >
@@ -159,7 +184,7 @@ export default function Header() {
                     <button
                         type="button"
                         className={`tv-header-btn icon-text ${isIndicatorsOpen ? 'active' : ''}`}
-                        onClick={() => setIsIndicatorsOpen((prev) => !prev)}
+                        onClick={() => setIsIndicatorsOpen(p => !p)}
                     >
                         <BarChart3 size={16} />
                         <span>Indicators</span>
@@ -167,7 +192,6 @@ export default function Header() {
                             <span className="tv-indicators-count">{enabledIndicators.length}</span>
                         )}
                     </button>
-
                     {isIndicatorsOpen && (
                         <div className="tv-indicators-modal">
                             <div className="tv-indicators-modal-head">
@@ -178,37 +202,32 @@ export default function Header() {
                                 <button
                                     type="button"
                                     className="tv-indicators-clear"
-                                    onClick={() => clearIndicators()}
+                                    onClick={clearIndicatorsForPane}
                                     disabled={enabledIndicators.length === 0}
                                 >
                                     Clear All
                                 </button>
                             </div>
-
                             <div className="tv-indicators-search-wrap">
                                 <Search size={14} />
                                 <input
                                     className="tv-indicators-search"
                                     type="text"
                                     value={indicatorQuery}
-                                    onChange={(event) => setIndicatorQuery(event.target.value)}
+                                    onChange={e => setIndicatorQuery(e.target.value)}
                                     placeholder="Search indicators"
                                 />
                             </div>
-
                             <div className="tv-indicators-list styling-scrollbar">
                                 {Object.entries(groupedIndicators).map(([category, indicators]) => (
                                     <div key={category}>
                                         <div className="tv-indicator-category-header">{category}</div>
-                                        {indicators.map((indicator) => {
+                                        {indicators.map(indicator => {
                                             const checked = enabledIndicators.includes(indicator.id);
                                             return (
                                                 <label key={indicator.id} className={`tv-indicator-item ${checked ? 'active' : ''}`}>
                                                     <div className="tv-indicator-item-left">
-                                                        <span
-                                                            className="tv-indicator-color-dot"
-                                                            style={{ background: INDICATOR_COLORS[indicator.id] }}
-                                                        />
+                                                        <span className="tv-indicator-color-dot" style={{ background: INDICATOR_COLORS[indicator.id] }} />
                                                         <div>
                                                             <span className="tv-indicator-item-label">{indicator.label}</span>
                                                             <span className="tv-indicator-item-desc">{indicator.description}</span>
@@ -218,7 +237,7 @@ export default function Header() {
                                                         <input
                                                             type="checkbox"
                                                             checked={checked}
-                                                            onChange={(event) => setIndicatorEnabled(indicator.id, event.target.checked)}
+                                                            onChange={e => setIndicatorEnabledForPane(indicator.id, e.target.checked)}
                                                         />
                                                     </div>
                                                 </label>
@@ -240,57 +259,48 @@ export default function Header() {
 
                 <div className="tv-header-separator" />
 
-                {/* Windows Menu */}
-                <div className="relative group">
-                    <button type="button" className="tv-header-btn icon-text">
+                {/* Layout Picker */}
+                <div ref={layoutRef} style={{ position: 'relative' }}>
+                    <button
+                        type="button"
+                        className={`tv-header-btn icon-text ${isLayoutOpen ? 'active' : ''}`}
+                        onClick={() => setIsLayoutOpen(p => !p)}
+                        title="Layout"
+                    >
                         <LayoutGrid size={16} />
-                        <span>Windows</span>
+                        <span>Layout</span>
                     </button>
-                    <div className="absolute top-full left-0 mt-1 hidden group-hover:flex flex-col bg-bg-elevated border border-border-subtle rounded-md overflow-hidden min-w-[140px] z-50 shadow-xl">
-                        <button onClick={() => useMarketStore.getState().addWidget('chart')} className="px-3 py-2 text-xs text-left hover:bg-accent/10 hover:text-accent transition-colors flex items-center gap-2">
-                            <BarChart2 size={12} /> Chart
-                        </button>
-                        <button onClick={() => useMarketStore.getState().addWidget('orderbook')} className="px-3 py-2 text-xs text-left hover:bg-accent/10 hover:text-accent transition-colors flex items-center gap-2">
-                            <LayoutGrid size={12} /> Order Book
-                        </button>
-                        <button onClick={() => useMarketStore.getState().addWidget('scalper')} className="px-3 py-2 text-xs text-left hover:bg-accent/10 hover:text-accent transition-colors flex items-center gap-2">
-                            <PlusSquare size={12} /> Scalper
-                        </button>
-                        <button onClick={() => useMarketStore.getState().addWidget('infopane')} className="px-3 py-2 text-xs text-left hover:bg-accent/10 hover:text-accent transition-colors flex items-center gap-2">
-                            <LayoutGrid size={12} /> Info Pane
-                        </button>
-                    </div>
+                    {isLayoutOpen && (
+                        <LayoutPicker onClose={() => setIsLayoutOpen(false)} />
+                    )}
                 </div>
-
-                {/* Quick Split */}
-                <button
-                    type="button"
-                    className="tv-header-btn icon-text"
-                    title="Split Chart"
-                    onClick={() => {
-                        const state = useMarketStore.getState();
-                        state.addWidget('chart');
-                        // Optional: Link both to Blue
-                        const widgets = useMarketStore.getState().activeWidgets;
-                        if (widgets.length >= 2) {
-                            state.setWidgetLink(widgets[widgets.length - 1].id, 'blue');
-                            state.setWidgetLink(widgets[widgets.length - 2].id, 'blue');
-                        }
-                    }}
-                >
-                    <Columns2 size={16} />
-                    <span>Split</span>
-                </button>
             </div>
 
             {/* Right section */}
             <div className="tv-header-right">
-                {/* Price info strip */}
-                <div className="tv-price-strip">
-                    <span className="tv-price-value">${currentPrice.toFixed(2)}</span>
-                    <span className={`tv-price-change ${priceChange24h >= 0 ? 'up' : 'down'}`}>
-                        {priceChange24h >= 0 ? '+' : ''}{priceChange24h.toFixed(2)}%
-                    </span>
+                {/* API Key Input */}
+                <div className="flex items-center bg-bg-elevated border border-border-subtle rounded-md px-2 py-1 mx-2 focus-within:border-accent">
+                    <Settings size={14} className="text-text-secondary mr-2" />
+                    <input
+                        type="password"
+                        placeholder="API Key (sk_live_...)"
+                        defaultValue={localStorage.getItem('sb_api_key') || ''}
+                        onBlur={(e) => {
+                            const val = e.target.value.trim();
+                            if (val !== localStorage.getItem('sb_api_key')) {
+                                if (val) localStorage.setItem('sb_api_key', val);
+                                else localStorage.removeItem('sb_api_key');
+                                import('../services/websocket').then(({ wsManager }) => {
+                                    wsManager.disconnect();
+                                    wsManager.connect();
+                                });
+                            }
+                        }}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                        }}
+                        className="bg-transparent border-none outline-none text-[11px] text-text-primary w-32 placeholder:text-text-dim"
+                    />
                 </div>
 
                 <div className="tv-header-separator" />
@@ -301,7 +311,7 @@ export default function Header() {
                 <button type="button" className="tv-header-btn" title="Settings">
                     <Settings size={16} />
                 </button>
-                <button type="button" className="tv-header-btn" title="Fullscreen">
+                <button type="button" className="tv-header-btn" title="Fullscreen" onClick={() => document.documentElement.requestFullscreen?.()}>
                     <Maximize2 size={16} />
                 </button>
 
@@ -323,7 +333,6 @@ export default function Header() {
                     className="tv-theme-toggle"
                     onClick={toggleTheme}
                     title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-                    aria-label="Toggle theme"
                 >
                     {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
                 </button>
