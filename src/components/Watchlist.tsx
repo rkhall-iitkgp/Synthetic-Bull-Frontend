@@ -1,9 +1,9 @@
 import { useMemo } from 'react';
 import { TrendingDown, Plus, MoreHorizontal, LayoutGrid, ExternalLink, Pencil, Info, X } from 'lucide-react';
 import useMarketStore from '../store/useMarketStore';
-import { candleWorker, requestHistory, isSymbolCached } from '../services/websocket';
+import { requestHistory, isStreamCached } from '../services/websocket';
 
-export default function Watchlist({ onClose }: { onClose?: () => void }) {
+export default function Watchlist({ onClose, widgetId }: { onClose?: () => void, widgetId?: string }) {
     const watchlist = useMarketStore(s => s.watchlist);
     const currentSymbol = useMarketStore(s => s.currentSymbol);
     const setCurrentSymbol = useMarketStore(s => s.setCurrentSymbol);
@@ -12,13 +12,19 @@ export default function Watchlist({ onClose }: { onClose?: () => void }) {
     const prices = useMarketStore(s => s.prices);
     const priceChanges = useMarketStore(s => s.priceChanges);
 
+    const syncLinkedWidgets = useMarketStore(s => s.syncLinkedWidgets);
+
     const handleSelect = (symbol: string) => {
         if (symbol === currentSymbol) return;
-        setCurrentSymbol(symbol);
+
+        if (widgetId) {
+            syncLinkedWidgets(widgetId, symbol);
+        } else {
+            setCurrentSymbol(symbol);
+        }
+
         useMarketStore.getState().clearCandles();
-        const timeframeSec = useMarketStore.getState().timeframe;
-        candleWorker.postMessage({ type: 'INIT', payload: { timeframeSec, symbol } });
-        if (!isSymbolCached(symbol)) {
+        if (!isStreamCached(symbol, useMarketStore.getState().timeframe)) {
             requestHistory(symbol);
         }
     };

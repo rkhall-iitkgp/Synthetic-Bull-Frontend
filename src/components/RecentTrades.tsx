@@ -1,7 +1,11 @@
 import useMarketStore from '../store/useMarketStore';
 
-export default function RecentTrades() {
-    const trades = useMarketStore(state => state.recentTrades);
+const EMPTY_TRADES: any[] = [];
+
+export default function RecentTrades({ symbol: propSymbol }: { symbol?: string }) {
+    const globalSymbol = useMarketStore(state => state.currentSymbol);
+    const symbol = propSymbol || globalSymbol;
+    const trades = useMarketStore(state => state.recentTrades[symbol] || EMPTY_TRADES);
 
     return (
         <div className="tv-trades">

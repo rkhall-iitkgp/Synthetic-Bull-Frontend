@@ -17,8 +17,8 @@ export default function TradePanel() {
         return h ? h.qty : 0;
     }, [holdings, currentSymbol]);
 
-    const bestBid = useMarketStore(state => state.orderBook.bids[0]?.price || 0);
-    const bestAsk = useMarketStore(state => state.orderBook.asks[0]?.price || 0);
+    const bestBid = useMarketStore(state => state.orderBooks[state.currentSymbol]?.bids[0]?.price || 0);
+    const bestAsk = useMarketStore(state => state.orderBooks[state.currentSymbol]?.asks[0]?.price || 0);
 
     const handlePriceClick = () => {
         setPrice(side === 'BUY' ? bestAsk.toFixed(2) : bestBid.toFixed(2));
@@ -38,14 +38,13 @@ export default function TradePanel() {
         if (side === 'SELL' && numericQty > availableQty) return;
         if (type === 'limit' && (!price || parseFloat(price) <= 0)) return;
 
-        wsManager.send({
-            type: 'place_order',
-            symbol: currentSymbol,
-            order_type: type,
-            side: side.toLowerCase(),
-            price: type === 'limit' ? parseFloat(price) : undefined,
-            qty: parseFloat(qty)
-        });
+        wsManager.placeOrder(
+            currentSymbol,
+            side.toLowerCase() as 'buy' | 'sell',
+            type,
+            parseFloat(qty),
+            type === 'limit' ? parseFloat(price) : undefined
+        );
 
         const numericPrice = parseFloat(price);
         const isMarketable = type === 'market' || (

@@ -1,12 +1,13 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Navbar } from './Navbar';
 import useMarketStore from '../store/useMarketStore';
 import { wsManager } from '../services/websocket';
 import {
   TrendingUp, TrendingDown, Wallet, BarChart3, DollarSign,
-  ArrowUpRight, ArrowDownRight, X, ExternalLink,
+  ArrowUpRight, ArrowDownRight, X, ExternalLink, Activity
 } from 'lucide-react';
+import * as api from '../services/api';
 
 import type { LucideIcon } from 'lucide-react';
 
@@ -59,6 +60,8 @@ export default function Dashboard() {
   const wsConnected = useMarketStore((s) => s.wsConnected);
   const removeOrder = useMarketStore((s) => s.removeOrder);
 
+  const [bots, setBots] = useState<api.Bot[]>([]);
+
   useEffect(() => {
     if (!wsConnected) {
       wsManager.connect();
@@ -72,6 +75,7 @@ export default function Dashboard() {
       symbols.forEach((sym) => {
         wsManager.send({ type: 'get_history', symbol: sym });
       });
+      import('../services/api').then(api => api.fetchBots()).then(setBots).catch(console.error);
     }
   }, [wsConnected, symbols]);
 
@@ -87,8 +91,8 @@ export default function Dashboard() {
     })).sort((a, b) => Math.abs(b.change) - Math.abs(a.change));
   }, [symbols, prices, priceChanges]);
 
-  const handleCancelOrder = (orderId: number) => {
-    wsManager.send({ type: 'cancel_order', order_id: orderId });
+  const handleCancelOrder = (symbol: string, orderId: number) => {
+    wsManager.cancelOrder(symbol, orderId);
     removeOrder(orderId);
   };
 
@@ -118,6 +122,18 @@ export default function Dashboard() {
               value={fmtUsd(portfolio.realizedPnl + portfolio.unrealizedPnl)}
               icon={BarChart3}
               change={portfolio.totalValue > 0 ? ((portfolio.realizedPnl + portfolio.unrealizedPnl) / portfolio.totalValue) * 100 : 0}
+            />
+            <StatCard
+              label={bots[0]?.name || "Bot 1 P&L"}
+              value={fmtUsd(0)}
+              icon={TrendingUp}
+              subtitle={bots[0] ? "Active" : "Standby"}
+            />
+            <StatCard
+              label={bots[1]?.name || "Bot 2 P&L"}
+              value={fmtUsd(0)}
+              icon={Activity}
+              subtitle={bots[1] ? "Active" : "Standby"}
             />
           </div>
 
@@ -285,7 +301,7 @@ export default function Dashboard() {
                           </div>
                         </div>
                         <button
-                          onClick={() => handleCancelOrder(order.order_id)}
+                          onClick={() => handleCancelOrder(order.symbol, order.order_id)}
                           className="w-7 h-7 rounded-md flex items-center justify-center text-text-secondary hover:text-bear hover:bg-bear/10 transition-all cursor-pointer"
                           title="Cancel order"
                         >

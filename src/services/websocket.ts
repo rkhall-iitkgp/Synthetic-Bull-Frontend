@@ -5,50 +5,58 @@ export const candleWorker = new Worker(new URL('../workers/candleWorker.ts', imp
 });
 
 candleWorker.onmessage = (e) => {
-    const { type, candle, candles } = e.data;
+    const { type, key, candle, candles } = e.data;
 
     if (type === 'CANDLE_UPDATE') {
-        useMarketStore.getState().setLatestCandle(candle);
+        useMarketStore.getState().setLatestCandle(key, candle);
     }
     else if (type === 'HISTORY_UPDATE') {
-        useMarketStore.getState().setCandlesData(candles);
+        useMarketStore.getState().setCandlesData(key, candles);
     }
     else if (type === 'CLEAR') {
-        // Worker reset — clear all chart data
-        useMarketStore.getState().clearCandles();
+        useMarketStore.getState().clearCandles(key);
     }
 };
 
-// Track which symbols already have history fetched — avoids redundant re-fetches
-const fetchedSymbols = new Set<string>();
-export function isSymbolCached(symbol: string): boolean {
-    return fetchedSymbols.has(symbol);
+// Track which symbol:timeframe already have history fetched
+const fetchedStreams = new Set<string>();
+export function isStreamCached(symbol: string, timeframe: number): boolean {
+    return fetchedStreams.has(`${symbol}:${timeframe}`);
 }
 
 /**
- * Change the candle timeframe. Call this when the user clicks a timeframe button.
- * It re-initializes the worker which clears history and starts fresh aggregation.
+ * Request history for a specific symbol. 
+ * Note: backend returns 1s candles, we aggregate them in worker.
  */
 export function requestHistory(symbol?: string) {
     const sym = symbol || useMarketStore.getState().currentSymbol;
     wsManager.send({ type: 'get_history', symbol: sym });
 }
 
-useMarketStore.subscribe((state, prevState) => {
-    if (state.currentSymbol !== prevState.currentSymbol || state.timeframe !== prevState.timeframe) {
-        candleWorker.postMessage({
-            type: 'INIT',
-            payload: { timeframeSec: state.timeframe, symbol: state.currentSymbol }
-        });
-        if (!isSymbolCached(state.currentSymbol)) {
-            requestHistory();
-        }
-    }
+// Side effect to keep worker in sync with ALL active charts
+useMarketStore.subscribe((state) => {
+    const activeCharts = state.activeWidgets.filter(w => w.type === 'chart');
 
-    if (prevState.isReplayMode && !state.isReplayMode) {
-        // Fresh re-fetch required to bridge the time gap created during Replay
-        requestHistory(state.currentSymbol);
-    }
+    activeCharts.forEach(widget => {
+        const symbol = widget.symbol || state.currentSymbol;
+        const timeframe = widget.timeframe || state.timeframe;
+        const key = `${symbol}:${timeframe}`;
+
+        // Ensure worker is tracking this stream
+        if (!isStreamCached(symbol, timeframe)) {
+            candleWorker.postMessage({
+                type: 'INIT',
+                payload: { timeframeSec: timeframe, symbol }
+            });
+            fetchedStreams.add(key);
+            requestHistory(symbol);
+        }
+    });
+
+    // Handle Replay -> Live transition
+    // Note: We don't have prevState easily here in simple subscribe, 
+    // but if we are NOT in replay mode, we should generally be synced.
+    // The previous logic was specifically for the transition.
 });
 
 export function changeTimeframe(seconds: number) {
@@ -75,52 +83,46 @@ class WSManager {
             this.reconnectDelay = 1000;
             useMarketStore.getState().setWsConnected(true);
 
-            // Initialize the candle worker with current timeframe
-            const initState = useMarketStore.getState();
-            candleWorker.postMessage({
-                type: 'INIT',
-                payload: { timeframeSec: initState.timeframe, symbol: initState.currentSymbol }
+            // Auth if we have an API key
+            const apiKey = localStorage.getItem('sb_api_key');
+            if (apiKey) {
+                this.send({ type: 'auth', api_key: apiKey });
+            }
+
+            // Re-fetch history for active widgets
+            fetchedStreams.clear();
+            const state = useMarketStore.getState();
+            state.activeWidgets.filter(w => w.type === 'chart').forEach(w => {
+                requestHistory(w.symbol || state.currentSymbol);
             });
 
-            // Ask for symbol list in case welcome arrives before UI is ready.
             this.send({ type: 'get_symbols' });
-
-            // Ask for history of current symbol
-            requestHistory();
-
-            // Subscribe to all watchlist symbols for real-time updates
-            const watchlist = useMarketStore.getState().watchlist;
-            watchlist.forEach(s => {
-                if (s !== useMarketStore.getState().currentSymbol) {
-                    this.send({ type: 'get_history', symbol: s });
-                }
-            });
         };
 
         this.ws.onmessage = (event) => {
             try {
                 const msg = JSON.parse(event.data);
-
                 const state = useMarketStore.getState();
                 const msgType = msg?.type;
 
+                if (msgType === 'auth_success') {
+                    console.log('Auth successful:', msg.role);
+                    return;
+                }
+
                 if (msgType === 'welcome' || msgType === 'symbols') {
                     const rawSymbols = Array.isArray(msg.symbols) ? msg.symbols : [];
-                    const symbols = rawSymbols.map((item: { symbol?: string; name?: string; category?: string; asset_type?: string } | string) => typeof item === 'string' ? item : item.symbol).filter(Boolean);
-                    const tickers = rawSymbols.map((item: { symbol?: string; name?: string; category?: string; asset_type?: string } | string) => ({
+                    const symbols = rawSymbols.map((item: any) => typeof item === 'string' ? item : item.symbol).filter(Boolean);
+                    const tickers = rawSymbols.map((item: any) => ({
                         symbol: typeof item === 'string' ? item : item.symbol,
                         name: typeof item === 'string' ? '' : (item.name || ''),
                         category: typeof item === 'string' ? 'Stocks' : (item.category || item.asset_type || 'Stocks'),
-                    })).filter((t: { symbol?: string }) => t.symbol);
+                    })).filter((t: any) => t.symbol);
 
                     if (symbols.length > 0) {
                         state.setSymbols(symbols);
                         state.setTickers(tickers);
-                        if (!symbols.includes(state.currentSymbol)) {
-                            state.setCurrentSymbol(symbols[0]);
-                        }
                     }
-
                     if (msgType === 'welcome' && typeof msg.user_id === 'string') {
                         state.setUserId(msg.user_id);
                     }
@@ -128,66 +130,37 @@ class WSManager {
                 }
 
                 if (msgType === 'orderbook') {
-                    if (msg.symbol !== state.currentSymbol) return;
-
-                    const bids = Array.isArray(msg.bids)
-                        ? msg.bids.map((level: [number, number]) => ({ price: level[0], qty: level[1] }))
-                        : [];
-                    const asks = Array.isArray(msg.asks)
-                        ? msg.asks.map((level: [number, number]) => ({ price: level[0], qty: level[1] }))
-                        : [];
-                    state.setOrderBook(bids, asks);
+                    const bids = Array.isArray(msg.bids) ? msg.bids.map((level: [number, number]) => ({ price: level[0], qty: level[1] })) : [];
+                    const asks = Array.isArray(msg.asks) ? msg.asks.map((level: [number, number]) => ({ price: level[0], qty: level[1] })) : [];
+                    state.setOrderBook(msg.symbol || state.currentSymbol, bids, asks);
                     return;
                 }
 
                 if (msgType === 'trade') {
-                    const price = Number(msg.price || 0);
                     const sym = String(msg.symbol || state.currentSymbol);
-                    if (sym === state.currentSymbol && state.candles.length > 0) {
-                        const openPrice = state.candles[0].open;
-                        const change = openPrice > 0 ? ((price - openPrice) / openPrice) * 100 : 0;
-                        state.setPrice(sym, price, change);
-                    } else {
-                        state.setPrice(sym, price);
-                    }
+                    const price = Number(msg.price || 0);
+                    const qty = Number(msg.qty || 0);
+                    const ts = normalizeToMs(msg.ts ?? msg.t ?? msg.time ?? msg.timestamp);
 
-                    if (sym !== state.currentSymbol) return;
-
-                    const rawTs = msg.ts ?? msg.t ?? msg.time ?? msg.timestamp;
-                    const fallbackTs = state.latestCandle ? state.latestCandle.time * 1000 : Date.now();
-                    const ts = rawTs ? normalizeToMs(rawTs) : fallbackTs;
-                    const inferredSide: 'BUY' | 'SELL' =
-                        msg.buyer === state.userId
-                            ? 'BUY'
-                            : msg.seller === state.userId
-                                ? 'SELL'
-                                : msg.price >= state.lastPrice
-                                    ? 'BUY'
-                                    : 'SELL';
-
-                    const trade = {
+                    state.addTrade(sym, {
                         id: Number(msg.id || 0),
                         symbol: sym,
-                        price: price,
-                        qty: Number(msg.qty || 0),
-                        side: inferredSide,
+                        price,
+                        qty,
+                        side: price >= state.lastPrice ? 'BUY' : 'SELL',
                         timestamp: ts,
-                        buyer: msg.buyer,
-                        seller: msg.seller,
-                    };
+                    });
 
-                    state.addTrade(trade);
                     candleWorker.postMessage({
                         type: 'TICK',
-                        payload: { price: trade.price, qty: trade.qty, timestamp: ts, symbol: trade.symbol }
+                        payload: { price, qty, timestamp: ts, symbol: sym }
                     });
                     return;
                 }
 
                 if (msgType === 'history') {
-                    // if (msg.symbol !== state.currentSymbol) return; // This line moves down
-
-                    const candles = msg.candles.map((c: Record<string, unknown>) => ({
+                    const sym = msg.symbol;
+                    const candles = msg.candles.map((c: any) => ({
                         time: normalizeToSec(c.t ?? c.ts ?? c.time),
                         open: Number(c.o || 0),
                         high: Number(c.h || 0),
@@ -195,68 +168,35 @@ class WSManager {
                         close: Number(c.c || 0),
                         volume: Number(c.v || 0),
                     }));
-
-                    if (candles.length > 0) {
-                        const closePrice = candles[candles.length - 1].close;
-                        const openPrice = candles[0].open;
-                        const change = openPrice > 0 ? ((closePrice - openPrice) / openPrice) * 100 : 0;
-                        state.setPrice(msg.symbol, closePrice, change);
-                    }
-
-                    if (msg.symbol !== state.currentSymbol) return;
-                    fetchedSymbols.add(msg.symbol);
-                    candleWorker.postMessage({ type: 'HISTORY', payload: candles });
+                    candleWorker.postMessage({ type: 'HISTORY', payload: { symbol: sym, candles } });
                     return;
                 }
 
                 if (msgType === 'candle') {
-                    const price = Number(msg.c || 0);
-                    if (msg.symbol === state.currentSymbol && state.candles.length > 0) {
-                        const openPrice = state.candles[0].open;
-                        const change = openPrice > 0 ? ((price - openPrice) / openPrice) * 100 : 0;
-                        state.setPrice(msg.symbol, price, change);
-                    } else {
-                        state.setPrice(msg.symbol, price);
-                    }
-
                     const next = {
                         symbol: msg.symbol,
                         time: normalizeToSec(msg.t ?? msg.ts ?? msg.time),
                         open: Number(msg.o || 0),
                         high: Number(msg.h || 0),
                         low: Number(msg.l || 0),
-                        close: price,
+                        close: Number(msg.c || 0),
                         volume: Number(msg.v || 0),
                     };
-
                     candleWorker.postMessage({ type: 'CANDLE_1S', payload: next });
                     return;
                 }
 
                 if (msgType === 'portfolio') {
-                    const positions = msg.positions && typeof msg.positions === 'object' ? msg.positions : {};
-                    const holdings = Object.entries(positions).map(([asset, raw]) => {
-                        const value = raw as {
-                            holdings?: number;
-                            avg_cost?: number;
-                            market_value?: number;
-                            realized_pnl?: number;
-                            unrealized_pnl?: number;
-                        };
-
-                        const qty = Number(value.holdings || 0);
-                        const marketValue = Number(value.market_value || 0);
-                        return {
-                            asset,
-                            qty,
-                            avgPrice: Number(value.avg_cost || 0),
-                            currentPrice: Math.abs(qty) > 1e-12 ? marketValue / qty : 0,
-                            marketValue,
-                            realizedPnl: Number(value.realized_pnl || 0),
-                            unrealizedPnl: Number(value.unrealized_pnl || 0),
-                        };
-                    });
-
+                    const positions = msg.positions || {};
+                    const holdings = Object.entries(positions).map(([asset, value]: [string, any]) => ({
+                        asset,
+                        qty: Number(value.holdings || 0),
+                        avgPrice: Number(value.avg_cost || 0),
+                        currentPrice: Math.abs(Number(value.holdings)) > 1e-12 ? Number(value.market_value) / Number(value.holdings) : 0,
+                        marketValue: Number(value.market_value || 0),
+                        realizedPnl: Number(value.realized_pnl || 0),
+                        unrealizedPnl: Number(value.unrealized_pnl || 0),
+                    }));
                     state.setPortfolio({
                         cash: Number(msg.cash || 0),
                         holdings,
@@ -268,46 +208,45 @@ class WSManager {
                 }
 
                 if (msgType === 'open_orders') {
-                    const orders = Array.isArray(msg.orders)
-                        ? msg.orders.map((order: {
-                            order_id: number;
-                            symbol: string;
-                            side: 'buy' | 'sell';
-                            price: number;
-                            orig_qty: number;
-                            remaining_qty: number;
-                        }) => ({
-                            order_id: Number(order.order_id),
-                            symbol: String(order.symbol),
-                            side: order.side === 'buy' ? 'BUY' : 'SELL' as const,
-                            type: 'limit' as const,
-                            price: Number(order.price || 0),
-                            qty: Number(order.orig_qty || 0),
-                            remainingQty: Number(order.remaining_qty || 0),
-                            status: 'Open',
-                        }))
-                        : [];
+                    const orders = Array.isArray(msg.orders) ? msg.orders.map((o: any) => ({
+                        order_id: o.order_id,
+                        symbol: o.symbol,
+                        side: o.side.toUpperCase(),
+                        type: 'limit',
+                        price: o.price,
+                        qty: o.orig_qty,
+                        remainingQty: o.remaining_qty,
+                        status: 'open'
+                    })) : [];
                     state.setOpenOrders(orders);
                     return;
                 }
 
+                if (msgType === 'ack') {
+                    console.log('Order accepted:', msg.order_id);
+                    return;
+                }
+
+                if (msgType === 'cancel_ack') {
+                    console.log('Order cancel result:', msg.order_id, msg.success);
+                    return;
+                }
+
                 if (msgType === 'error') {
-                    console.warn('Server error:', msg.message);
+                    console.error('Exchange error:', msg.message);
                     const isUnknownType = msg.message?.toLowerCase().includes('unknown message type');
                     if (!isUnknownType) {
                         state.addNotification(msg.message || 'An unknown error occurred', 'error');
                     }
                     return;
                 }
-            } catch {
-                // ignore JSON errors
+            } catch (e) {
+                console.warn('WS error:', e);
             }
         };
 
         this.ws.onclose = () => {
-            fetchedSymbols.clear();
             useMarketStore.getState().setWsConnected(false);
-            console.log(`WS closed, reconnecting in ${this.reconnectDelay}ms`);
             if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
             this.reconnectTimer = setTimeout(() => this.connect(), this.reconnectDelay);
             this.reconnectDelay = Math.min(this.reconnectDelay * 1.5, 30000);
@@ -319,27 +258,41 @@ class WSManager {
             this.ws.send(JSON.stringify(message));
         }
     }
+
+    placeOrder(symbol: string, side: 'buy' | 'sell', type: 'limit' | 'market', qty: number, price?: number) {
+        this.send({
+            type: 'place_order',
+            symbol,
+            side,
+            order_type: type,
+            qty,
+            ...(price ? { price } : {})
+        });
+    }
+
+    cancelOrder(symbol: string, orderId: number) {
+        this.send({
+            type: 'cancel_order',
+            symbol,
+            order_id: orderId
+        });
+    }
+
+    disconnect() {
+        if (this.reconnectTimer) {
+            clearTimeout(this.reconnectTimer);
+            this.reconnectTimer = null;
+        }
+        if (this.ws) {
+            this.ws.onclose = null; // Prevent auto-reconnect
+            this.ws.close();
+            this.ws = null;
+        }
+        useMarketStore.getState().setWsConnected(false);
+    }
 }
 
 function normalizeToMs(ts: unknown): number {
-    if (typeof ts === 'string') {
-        const trimmed = ts.trim();
-        if (!trimmed) return Date.now();
-
-        const numeric = Number(trimmed);
-        if (Number.isFinite(numeric) && numeric > 0) {
-            if (numeric > 1e14) return Math.floor(numeric / 1000);
-            return numeric < 1e12 ? numeric * 1000 : numeric;
-        }
-
-        const parsed = Date.parse(trimmed);
-        if (Number.isFinite(parsed) && parsed > 0) {
-            return parsed;
-        }
-
-        return Date.now();
-    }
-
     const value = Number(ts ?? 0);
     if (!Number.isFinite(value) || value <= 0) return Date.now();
     if (value > 1e14) return Math.floor(value / 1000);

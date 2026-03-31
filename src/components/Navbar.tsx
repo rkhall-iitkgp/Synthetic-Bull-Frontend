@@ -1,7 +1,6 @@
 import { Activity, Monitor, UserCircle, ShieldAlert } from "lucide-react";
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ModeToggle } from './mode-toggle';
-import useMarketStore from '../store/useMarketStore';
 
 export function Navbar() {
   const navigate = useNavigate();
@@ -29,33 +28,30 @@ export function Navbar() {
         <div className="h-5 w-px bg-border-subtle" />
         <button
           onClick={() => navigate('/user/dashboard')}
-          className={`flex items-center gap-2 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider rounded transition-all cursor-pointer ${
-            location.pathname === '/user/dashboard' 
-              ? 'bg-accent/10 text-accent border border-accent/20' 
+          className={`flex items-center gap-2 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider rounded transition-all cursor-pointer ${location.pathname === '/user/dashboard'
+              ? 'bg-accent/10 text-accent border border-accent/20'
               : 'text-text-secondary hover:text-text-primary dash-nav-btn'
-          }`}
+            }`}
         >
           <Activity className="w-3.5 h-3.5" />
           Dashboard
         </button>
         <button
           onClick={() => navigate('/terminal')}
-          className={`flex items-center gap-2 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider rounded transition-all cursor-pointer ${
-            location.pathname === '/terminal' 
-              ? 'bg-accent/10 text-accent border border-accent/20' 
+          className={`flex items-center gap-2 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider rounded transition-all cursor-pointer ${location.pathname === '/terminal'
+              ? 'bg-accent/10 text-accent border border-accent/20'
               : 'text-text-secondary hover:text-text-primary dash-nav-btn'
-          }`}
+            }`}
         >
           <Monitor className="w-3.5 h-3.5" />
           Terminal
         </button>
         <button
           onClick={() => navigate('/admin/dashboard')}
-          className={`flex items-center gap-2 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider rounded transition-all cursor-pointer ${
-            location.pathname === '/admin/dashboard' 
-              ? 'bg-accent/10 text-accent border border-accent/20' 
+          className={`flex items-center gap-2 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider rounded transition-all cursor-pointer ${location.pathname === '/admin/dashboard'
+              ? 'bg-accent/10 text-accent border border-accent/20'
               : 'text-text-secondary hover:text-text-primary dash-nav-btn'
-          }`}
+            }`}
         >
           <ShieldAlert className="w-3.5 h-3.5" />
           Admin

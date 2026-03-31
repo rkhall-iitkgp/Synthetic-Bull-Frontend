@@ -1,15 +1,14 @@
 import { useEffect, useState } from 'react';
 import { Navbar } from './Navbar';
 import { fetchBots, createBot, type Bot } from '../services/api';
-import { Check, Copy, Plus, Server, ShieldAlert, Cpu } from 'lucide-react'; 
+import { Check, Copy, Plus, Server, ShieldAlert, Cpu } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 export default function AdminDashboard() {
   const [bots, setBots] = useState<Bot[]>([]);
   const [newBotName, setNewBotName] = useState('');
-  const [creating, setCreating] = useState(false);
-  const [copiedKey, setCopiedKey] = useState<string | null>(null);
-  const [error, setError] = useState('');
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     loadBots();
@@ -17,156 +16,180 @@ export default function AdminDashboard() {
 
   const loadBots = async () => {
     try {
+      setLoading(true);
       const data = await fetchBots();
       setBots(data);
     } catch (err) {
       console.error(err);
-      setError('Failed to load bots');
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleCreateBot = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newBotName.trim()) return;
-    
-    setCreating(true);
-    setError('');
     try {
-      const bot = await createBot(newBotName);
-      setBots([bot, ...bots]);
+      await createBot(newBotName);
       setNewBotName('');
+      loadBots();
     } catch (err) {
       console.error(err);
-      setError('Failed to create bot');
-    } finally {
-      setCreating(false);
     }
   };
 
-  const handleCopy = (apiKey: string) => {
-    navigator.clipboard.writeText(apiKey);
-    setCopiedKey(apiKey);
-    setTimeout(() => setCopiedKey(null), 2000);
+  const handleCopy = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedId(text);
+    setTimeout(() => setCopiedId(null), 2000);
   };
 
   return (
-    <div className="h-screen w-full dash-bg text-text-primary flex flex-col overflow-hidden font-sans selection:bg-accent/30 selection:text-accent">
+    <div className="min-h-screen w-full dash-bg text-text-primary flex flex-col font-sans">
       <Navbar />
-      
-      <main className="flex-1 overflow-y-auto p-8 flex justify-center">
-        <div className="w-full max-w-5xl flex flex-col gap-6">
-          <div className="flex items-center justify-between">
+
+      <main className="flex-1 p-8 overflow-y-auto">
+        <div className="max-w-6xl mx-auto space-y-8">
+          <header className="flex justify-between items-end">
             <div>
-              <h1 className="text-3xl font-bold tracking-tight text-text-primary flex items-center gap-3">
-                <ShieldAlert className="text-accent" size={28} />
-                Admin Dashboard
-              </h1>
-              <p className="text-text-secondary mt-1 text-sm">Manage autonomous bots and generate API tokens.</p>
+              <h1 className="text-4xl font-bold tracking-tight text-white mb-2">Simulated Universe</h1>
+              <p className="text-text-secondary text-lg">Manage your automated trading intelligence.</p>
             </div>
-          </div>
 
-          {error && <div className="p-3 bg-red-500/10 border border-red-500/20 text-red-500 rounded text-sm">{error}</div>}
-
-          {/* Top Panel - Create Bot */}
-          <div className="dash-card p-6 flex flex-col gap-4">
-            <h2 className="text-lg font-semibold flex items-center gap-2">
-              <Cpu size={20} className="text-text-secondary" />
-              Provision New Bot
-            </h2>
-            <form onSubmit={handleCreateBot} className="flex gap-3">
-              <input 
-                type="text" 
-                value={newBotName}
-                onChange={e => setNewBotName(e.target.value)}
-                placeholder="Enter bot name (e.g., Alpha-01)"
-                className="flex-1 bg-bg-primary border border-border-subtle rounded px-4 py-2 text-sm text-text-primary focus:outline-none focus:border-accent/40 placeholder:text-text-muted transition-colors"
-                disabled={creating}
-                autoComplete="off"
-              />
-              <button 
-                type="submit" 
-                disabled={creating || !newBotName.trim()}
-                className="dash-btn px-5 py-2 font-semibold text-sm rounded flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Plus size={16} />
-                {creating ? 'Provisioning...' : 'Generate API Key'}
-              </button>
-            </form>
-          </div>
-
-          {/* Bot List Table */}
-          <div className="dash-card flex flex-col overflow-hidden">
-            <div className="p-4 border-b border-border-subtle bg-bg-secondary/40 flex items-center gap-2">
-              <Server size={18} className="text-text-secondary" />
-              <h2 className="font-semibold text-sm">Active Bot Instances</h2>
+            <div className="flex gap-4 p-1 bg-bg-secondary/40 rounded-xl border border-border-subtle">
+              <div className="px-4 py-2 rounded-lg bg-bg-panel border border-border-subtle shadow-lg">
+                <div className="text-[10px] uppercase tracking-wider text-text-muted font-bold mb-1">Total Agents</div>
+                <div className="text-2xl font-mono text-accent">{bots.length}</div>
+              </div>
+              <div className="px-4 py-2 rounded-lg bg-bg-panel border border-border-subtle shadow-lg">
+                <div className="text-[10px] uppercase tracking-wider text-text-muted font-bold mb-1">Network Status</div>
+                <div className="text-2xl font-mono text-bull flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-bull animate-pulse" />
+                  LIVE
+                </div>
+              </div>
             </div>
-            
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm whitespace-nowrap">
-                <thead className="bg-bg-secondary/20 text-text-secondary text-[11px] uppercase tracking-wider">
-                  <tr>
-                    <th className="px-6 py-4 font-semibold w-24">Bot ID</th>
-                    <th className="px-6 py-4 font-semibold">Bot Name</th>
-                    <th className="px-6 py-4 font-semibold w-24">Status</th>
-                    <th className="px-6 py-4 font-semibold">API Key</th>
-                    <th className="px-6 py-4 font-semibold">Created At</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border-subtle">
-                  {bots.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="px-6 py-8 text-center text-text-muted italic">
-                        No bots provisioned yet.
-                      </td>
-                    </tr>
-                  ) : (
-                    bots.map((bot) => (
-                      <tr key={bot.id} className="hover:bg-bg-secondary/20 transition-colors">
-                        <td className="px-6 py-4">
-                          <code className="bg-bg-primary px-2 py-1 rounded text-xs text-text-secondary border border-border-subtle font-mono">
-                            {bot.id}
-                          </code>
-                        </td>
-                        <td className="px-6 py-4 font-medium text-text-primary">
-                          <Link to={`/admin/dashboard/bot/${bot.id}`} className="hover:text-accent hover:underline flex items-center gap-2 transition-colors">
-                            {bot.name}
-                          </Link>
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium border ${
-                            bot.status === 'active' 
-                              ? 'bg-green-500/10 text-green-500 border-green-500/20'
-                              : 'bg-red-500/10 text-red-500 border-red-500/20'
-                          }`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${bot.status === 'active' ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></span>
-                            {bot.status.toUpperCase()}
+          </header>
+
+          <section className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-8">
+            {/* Bots List */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Server size={20} className="text-accent" />
+                <h2 className="text-xl font-bold">Bot Instances</h2>
+              </div>
+
+              {loading && bots.length === 0 ? (
+                <div className="dash-card p-20 text-center text-text-muted italic border-dashed">
+                  Scanning network for active bots...
+                </div>
+              ) : bots.length === 0 ? (
+                <div className="dash-card p-20 text-center space-y-4 border-dashed">
+                  <Cpu size={48} className="mx-auto text-text-muted opacity-20" />
+                  <p className="text-text-secondary text-lg font-medium">The void is silent. No bots found.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-4">
+                  {bots.map((bot) => (
+                    <div key={bot.id} className="dash-card group hover:border-accent/40 transition-all p-5 flex flex-col gap-4">
+                      <div className="flex justify-between items-start">
+                        <div className="flex items-start gap-4">
+                          <div className="p-3 rounded-xl bg-accent/10 text-accent group-hover:bg-accent group-hover:text-white transition-colors">
+                            <Cpu size={24} />
+                          </div>
+                          <div>
+                            <h3 className="text-xl font-bold group-hover:text-accent transition-colors">
+                              {bot.name}
+                            </h3>
+                            <div className="flex items-center gap-3 mt-1.5 font-mono text-[11px] text-text-secondary">
+                              <span>ID: {bot.id}</span>
+                              <div className="w-1 h-1 rounded-full bg-text-muted" />
+                              <span>Uptime: {new Date(bot.created_at).toLocaleDateString()}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col items-end gap-2">
+                          <span className={`px-3 py-1 rounded-full text-[10px] font-bold tracking-widest uppercase border ${bot.status === 'active' ? 'bg-bull/10 text-bull border-bull/20' : 'bg-bear/10 text-bear border-bear/20'}`}>
+                            {bot.status}
                           </span>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-2 group">
-                            <code className="bg-bg-primary px-2 py-1 rounded text-xs text-text-primary border border-border-subtle font-mono select-all">
-                              {bot.api_key}
-                            </code>
-                            <button 
-                              onClick={() => handleCopy(bot.api_key)}
+                          <Link
+                            to={`/admin/bots/${bot.id}`}
+                            className="text-xs text-accent hover:underline flex items-center gap-1 font-semibold"
+                          >
+                            Inspection View →
+                          </Link>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3 pt-3 border-t border-border-subtle/50 mt-1">
+                        <div className="flex-1 flex items-center gap-3 bg-bg-primary/50 rounded-lg border border-border-subtle px-3 py-2">
+                          <ShieldAlert size={14} className="text-text-muted" />
+                          <code className="text-xs font-mono text-text-secondary flex-1 truncate">
+                            {bot.api_key || 'No Key Assigned'}
+                          </code>
+                          {bot.api_key && (
+                            <button
+                              onClick={() => handleCopy(bot.api_key || '')}
                               className="p-1.5 rounded bg-bg-primary border border-border-subtle text-text-secondary hover:text-accent hover:border-accent/40 transition-colors"
                               title="Copy API Key"
                             >
-                              {copiedKey === bot.api_key ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
+                              {copiedId === bot.api_key ? <Check size={14} className="text-bull" /> : <Copy size={14} />}
                             </button>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 text-text-secondary text-xs">
-                          {new Date(bot.created_at).toLocaleString()}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-          </div>
 
+            {/* Create Bot Sidebar */}
+            <div className="space-y-6">
+              <div className="dash-card p-6 border-accent/20 bg-accent/5">
+                <div className="flex items-center gap-2 mb-6">
+                  <Plus size={20} className="text-accent" />
+                  <h2 className="text-xl font-bold">New Deployment</h2>
+                </div>
+
+                <form onSubmit={handleCreateBot} className="space-y-4">
+                  <div>
+                    <label className="text-[10px] uppercase tracking-widest font-bold text-text-muted mb-2 block">Agent Alias</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. ALPHA-STRAT-01"
+                      className="w-full bg-bg-panel border border-border-subtle rounded-xl px-4 py-3 outline-none focus:border-accent transition-colors font-mono text-sm"
+                      value={newBotName}
+                      onChange={(e) => setNewBotName(e.target.value)}
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="w-full bg-accent hover:bg-accent/90 text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 transition-all active:scale-[0.98] shadow-lg shadow-accent/20"
+                  >
+                    Deploy to Network
+                    <Server size={18} />
+                  </button>
+                </form>
+
+                <p className="text-[10px] text-text-muted mt-6 leading-relaxed italic text-center">
+                  By deploying a new agent, you authorize the simulator to allocate virtual capital and initiate automated trading protocols.
+                </p>
+              </div>
+
+              <div className="dash-card p-6 border-bull/20 bg-bull/5">
+                <h3 className="text-sm font-bold flex items-center gap-2 mb-3">
+                  <div className="w-2 h-2 rounded-full bg-bull" />
+                  Operational Bulletin
+                </h3>
+                <p className="text-xs text-text-secondary leading-relaxed">
+                  All systems nominal. API bridge stable. Market feed latency: 14ms. High volatility detected in Synthetic Indexes.
+                </p>
+              </div>
+            </div>
+          </section>
         </div>
       </main>
     </div>

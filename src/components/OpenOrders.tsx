@@ -6,7 +6,7 @@ export default function OpenOrders() {
     const currentSymbol = useMarketStore(state => state.currentSymbol);
 
     const handleCancel = (symbol: string, orderId: number) => {
-        wsManager.send({ type: 'cancel_order', symbol, order_id: orderId });
+        wsManager.cancelOrder(symbol, orderId);
     };
 
     const visibleOrders = orders.filter((o) => o.symbol === currentSymbol);

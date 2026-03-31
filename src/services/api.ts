@@ -12,9 +12,37 @@ export interface Ticker {
 export interface Bot {
     id: string;
     name: string;
-    api_key: string;
+    api_key?: string;
     status: string;
     created_at: string;
+}
+
+export interface BotTransaction {
+    id: number | string;
+    symbol: string;
+    price: number;
+    qty: number;
+    side: string;
+    timestamp: number | string;
+}
+
+// Alias for backward compatibility
+export type BotTrade = BotTransaction;
+
+export interface BotPortfolio {
+    cash_balance: number;
+    initial_capital: number;
+    positions: {
+        symbol: string;
+        qty: number;
+        avg_entry_price: number;
+    }[];
+}
+
+export interface DepositResponse {
+    bot_id: string;
+    amount: number;
+    new_cash_balance: number;
 }
 
 export async function fetchTickers(): Promise<Ticker[]> {
@@ -39,33 +67,7 @@ export async function createBot(name: string): Promise<Bot> {
     return await res.json();
 }
 
-export interface BotTrade {
-    id: string;
-    bot_id: string;
-    symbol: string;
-    side: string;
-    price: number;
-    qty: number;
-    timestamp: string;
-}
-
-export interface BotPortfolio {
-    cash_balance: number;
-    initial_capital: number;
-    positions: {
-        symbol: string;
-        qty: number;
-        avg_entry_price: number;
-    }[];
-}
-
-export interface DepositResponse {
-    bot_id: string;
-    amount: number;
-    new_cash_balance: number;
-}
-
-export async function fetchBotTrades(botId: string): Promise<BotTrade[]> {
+export async function fetchBotTrades(botId: string): Promise<BotTransaction[]> {
     const res = await fetch(`${API_BASE}/api/bots/${botId}/trades`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.json();
@@ -89,4 +91,3 @@ export async function depositFunds(botId: string, amount: number): Promise<Depos
     }
     return await res.json();
 }
-
