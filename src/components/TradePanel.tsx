@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import useMarketStore from '../store/useMarketStore';
 import { wsManager } from '../services/websocket';
 
-export default function TradePanel() {
+export default function TradePanel({ symbol: propSymbol }: { symbol?: string }) {
     const [side, setSide] = useState<'BUY' | 'SELL'>('BUY');
     const [type, setType] = useState<'limit' | 'market'>('limit');
     const [price, setPrice] = useState('');
@@ -10,15 +10,16 @@ export default function TradePanel() {
 
     const lastPrice = useMarketStore(state => state.lastPrice);
     const currentSymbol = useMarketStore(state => state.currentSymbol);
+    const symbol = propSymbol || currentSymbol;
     const holdings = useMarketStore(state => state.portfolio.holdings);
 
     const availableQty = useMemo(() => {
-        const h = holdings.find(item => item.asset === currentSymbol);
+        const h = holdings.find(item => item.asset === symbol);
         return h ? h.qty : 0;
-    }, [holdings, currentSymbol]);
+    }, [holdings, symbol]);
 
-    const bestBid = useMarketStore(state => state.orderBook.bids[0]?.price || 0);
-    const bestAsk = useMarketStore(state => state.orderBook.asks[0]?.price || 0);
+    const bestBid = useMarketStore(state => state.orderBooks[symbol]?.bids[0]?.price || 0);
+    const bestAsk = useMarketStore(state => state.orderBooks[symbol]?.asks[0]?.price || 0);
 
     const handlePriceClick = () => {
         setPrice(side === 'BUY' ? bestAsk.toFixed(2) : bestBid.toFixed(2));
@@ -38,14 +39,13 @@ export default function TradePanel() {
         if (side === 'SELL' && numericQty > availableQty) return;
         if (type === 'limit' && (!price || parseFloat(price) <= 0)) return;
 
-        wsManager.send({
-            type: 'place_order',
-            symbol: currentSymbol,
-            order_type: type,
-            side: side.toLowerCase(),
-            price: type === 'limit' ? parseFloat(price) : undefined,
-            qty: parseFloat(qty)
-        });
+        wsManager.placeOrder(
+            symbol,
+            side.toLowerCase() as 'buy' | 'sell',
+            type,
+            parseFloat(qty),
+            type === 'limit' ? parseFloat(price) : undefined
+        );
 
         const numericPrice = parseFloat(price);
         const isMarketable = type === 'market' || (
@@ -57,8 +57,8 @@ export default function TradePanel() {
 
         useMarketStore.getState().addNotification(
             !isMarketable
-                ? `Order for ${qty} ${currentSymbol} added to OPEN ORDER`
-                : `${side} order for ${qty} ${currentSymbol} executed successfully`,
+                ? `Order for ${qty} ${symbol} added to OPEN ORDER`
+                : `${side} order for ${qty} ${symbol} executed successfully`,
             'success'
         );
 
@@ -137,7 +137,7 @@ export default function TradePanel() {
                             placeholder="0"
                             required
                         />
-                        <span className="tv-trade-unit">{currentSymbol}</span>
+                        <span className="tv-trade-unit">{symbol}</span>
                     </div>
                 </div>
 
@@ -151,7 +151,7 @@ export default function TradePanel() {
                     className={`tv-trade-submit ${side === 'BUY' ? 'buy' : 'sell'}`}
                     disabled={side === 'SELL' && (parseFloat(qty) > availableQty || !qty || parseFloat(qty) <= 0)}
                 >
-                    {side} {currentSymbol}
+                    {side} {symbol}
                 </button>
             </form>
         </div>

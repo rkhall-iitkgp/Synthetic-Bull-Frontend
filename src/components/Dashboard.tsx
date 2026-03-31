@@ -1,12 +1,15 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Navbar } from './Navbar';
 import useMarketStore from '../store/useMarketStore';
 import { wsManager } from '../services/websocket';
 import {
   TrendingUp, TrendingDown, Wallet, BarChart3, DollarSign,
-  ArrowUpRight, ArrowDownRight, X, ExternalLink,
+  ArrowUpRight, ArrowDownRight, X, ExternalLink, Activity
 } from 'lucide-react';
+import * as api from '../services/api';
+import SentimentFeed from './SentimentFeed';
+import MarketHeatmap from './MarketHeatmap';
 
 import type { LucideIcon } from 'lucide-react';
 
@@ -59,6 +62,8 @@ export default function Dashboard() {
   const wsConnected = useMarketStore((s) => s.wsConnected);
   const removeOrder = useMarketStore((s) => s.removeOrder);
 
+  const [bots, setBots] = useState<api.Bot[]>([]);
+
   useEffect(() => {
     if (!wsConnected) {
       wsManager.connect();
@@ -72,6 +77,7 @@ export default function Dashboard() {
       symbols.forEach((sym) => {
         wsManager.send({ type: 'get_history', symbol: sym });
       });
+      import('../services/api').then(api => api.fetchBots()).then(setBots).catch(console.error);
     }
   }, [wsConnected, symbols]);
 
@@ -87,8 +93,8 @@ export default function Dashboard() {
     })).sort((a, b) => Math.abs(b.change) - Math.abs(a.change));
   }, [symbols, prices, priceChanges]);
 
-  const handleCancelOrder = (orderId: number) => {
-    wsManager.send({ type: 'cancel_order', order_id: orderId });
+  const handleCancelOrder = (symbol: string, orderId: number) => {
+    wsManager.cancelOrder(symbol, orderId);
     removeOrder(orderId);
   };
 
@@ -97,10 +103,29 @@ export default function Dashboard() {
       <Navbar />
 
       <main className="flex-1 min-h-0 overflow-y-auto styling-scrollbar">
-        <div className="max-w-[1600px] mx-auto px-6 py-6 flex flex-col gap-6">
+        <div className="max-w-[1680px] mx-auto px-5 md:px-7 py-6 md:py-8 flex flex-col gap-6 md:gap-7">
+
+          <section className="dash-card dash-card-glass px-5 py-4 md:px-6 md:py-5 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+            <div>
+              <h1 className="text-xl md:text-2xl font-semibold text-text-primary tracking-tight">NextBull Wealth Dashboard</h1>
+              <p className="text-xs text-text-secondary mt-1">Smart overview for portfolio, market pulse, and execution opportunities.</p>
+            </div>
+            <div className="flex items-center gap-2 md:gap-3">
+              <div className="px-3 py-2 rounded-lg border border-border-subtle bg-bg-elevated/70 text-xs font-medium">
+                {wsConnected ? 'Realtime mode enabled' : 'Awaiting market stream'}
+              </div>
+              <button
+                type="button"
+                onClick={() => navigate('/terminal')}
+                className="nb-btn-primary text-xs font-semibold uppercase tracking-wider"
+              >
+                Open Terminal
+              </button>
+            </div>
+          </section>
 
           {/* ── Row 1: Stat Cards ── */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3.5 md:gap-4">
             <StatCard
               label="Portfolio Value"
               value={fmtUsd(portfolio.totalValue)}
@@ -119,6 +144,27 @@ export default function Dashboard() {
               icon={BarChart3}
               change={portfolio.totalValue > 0 ? ((portfolio.realizedPnl + portfolio.unrealizedPnl) / portfolio.totalValue) * 100 : 0}
             />
+            <StatCard
+              label={bots[0]?.name || "Bot 1 P&L"}
+              value={fmtUsd(0)}
+              icon={TrendingUp}
+              subtitle={bots[0] ? "Active" : "Standby"}
+            />
+            <StatCard
+              label={bots[1]?.name || "Bot 2 P&L"}
+              value={fmtUsd(0)}
+              icon={Activity}
+              subtitle={bots[1] ? "Active" : "Standby"}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-5 gap-4 md:gap-5">
+            <div className="xl:col-span-3">
+              <MarketHeatmap />
+            </div>
+            <div className="xl:col-span-2">
+              <SentimentFeed />
+            </div>
           </div>
 
           {/* ── Row 2: Holdings Table ── */}
@@ -194,7 +240,7 @@ export default function Dashboard() {
           </div>
 
           {/* ── Row 3: Market Overview + Open Orders ── */}
-          <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 md:gap-6">
 
             {/* Market Overview (3 cols) */}
             <div className="lg:col-span-3 dash-card overflow-hidden flex flex-col">
@@ -285,7 +331,7 @@ export default function Dashboard() {
                           </div>
                         </div>
                         <button
-                          onClick={() => handleCancelOrder(order.order_id)}
+                          onClick={() => handleCancelOrder(order.symbol, order.order_id)}
                           className="w-7 h-7 rounded-md flex items-center justify-center text-text-secondary hover:text-bear hover:bg-bear/10 transition-all cursor-pointer"
                           title="Cancel order"
                         >

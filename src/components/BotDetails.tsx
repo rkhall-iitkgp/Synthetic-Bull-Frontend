@@ -18,6 +18,7 @@ import {
 // ─── Types ────────────────────────────────────────────────────────────────────
 type BotId = 'alpha_bot' | 'market_maker';
 
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function fmt(v: number, d = 2) {
   return v.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
@@ -868,6 +869,24 @@ export default function BotDetails() {
     const pf = await fetchBotPortfolio(botId);
     setPortfolio(pf);
   };
+
+  if (loading && !bot) {
+    return (
+      <div className="h-screen w-full dash-bg flex flex-col">
+        <Navbar />
+        <div className="flex-1 flex items-center justify-center text-text-muted">Loading bot details...</div>
+      </div>
+    );
+  }
+
+  if (!bot) {
+    return (
+      <div className="h-screen w-full dash-bg flex flex-col">
+        <Navbar />
+        <div className="flex-1 flex items-center justify-center text-red-500">Bot not found</div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-bg-terminal text-text-primary overflow-y-auto styling-scrollbar">
