@@ -57,14 +57,12 @@ function MetricCard({ label, value }: { label: string; value: string }) {
 }
 
 export default function BotPanel({ onClose }: { onClose?: () => void }) {
-    const {
-        botStatus,
-        botConfigs,
-        setBotStatus,
-        updateBotConfig,
-        currentSymbol,
-        prices
-    } = useMarketStore();
+    const botStatus = useMarketStore((s) => s.botStatus);
+    const botConfigs = useMarketStore((s) => s.botConfigs);
+    const setBotStatus = useMarketStore((s) => s.setBotStatus);
+    const updateBotConfig = useMarketStore((s) => s.updateBotConfig);
+    const currentSymbol = useMarketStore((s) => s.currentSymbol);
+    const prices = useMarketStore((s) => s.prices);
     const { alpha, marketMaker } = useBotPolling();
 
     const [selectedBotId, setSelectedBotId] = useState<'market_maker' | 'alpha_bot'>('market_maker');

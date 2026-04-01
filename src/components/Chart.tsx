@@ -703,8 +703,13 @@ function Chart() {
     const [textEntry, setTextEntry] = useState<{ x: number, y: number, time: number, price: number } | null>(null);
     const textInputRef = useRef<HTMLInputElement>(null);
     const currentCrosshairRef = useRef<{ time: number, price: number } | null>(null);
+    const crosshairRafRef = useRef<number | null>(null);
+    const pendingCrosshairRef = useRef<ReturnType<typeof useMarketStore.getState>['crosshairData']>(null);
+    const lastCrosshairRef = useRef<ReturnType<typeof useMarketStore.getState>['crosshairData']>(null);
 
     const drawingSeriesRef = useRef<ISeriesApi<"Line">[]>([]);
+    const previewRafRef = useRef<number | null>(null);
+    const pendingPreviewDataRef = useRef<Array<{ time: UTCTimestamp; value: number }> | null>(null);
     // Use unknown for series/line, as type is not strictly enforced by lightweight-charts
     const drawingPriceLinesRef = useRef<{ series: unknown; line: unknown }[]>([]);
 
@@ -899,8 +904,17 @@ function Chart() {
         // Subscribe to crosshair move for OHLCV overlay
         chart.subscribeCrosshairMove((param) => {
             if (!param || !param.time || !param.seriesData || !param.point) {
-                setCrosshairData(null);
+                pendingCrosshairRef.current = null;
                 currentCrosshairRef.current = null;
+                if (crosshairRafRef.current === null) {
+                    crosshairRafRef.current = requestAnimationFrame(() => {
+                        crosshairRafRef.current = null;
+                        if (lastCrosshairRef.current !== null) {
+                            setCrosshairData(null);
+                            lastCrosshairRef.current = null;
+                        }
+                    });
+                }
                 return;
             }
 
@@ -911,17 +925,61 @@ function Chart() {
                 currentCrosshairRef.current = null;
             }
 
+            // Crosshair overlay is only needed while in crosshair cursor mode.
+            if (useMarketStore.getState().activeTool !== 'crosshair') {
+                pendingCrosshairRef.current = null;
+                if (crosshairRafRef.current === null) {
+                    crosshairRafRef.current = requestAnimationFrame(() => {
+                        crosshairRafRef.current = null;
+                        if (lastCrosshairRef.current !== null) {
+                            setCrosshairData(null);
+                            lastCrosshairRef.current = null;
+                        }
+                    });
+                }
+                return;
+            }
+
             const candleData = param.seriesData.get(mainSeries) as { open?: number; high?: number; low?: number; close?: number; value?: number } | undefined;
             if (candleData) {
                 const volData = param.seriesData.get(volumeSeries) as { value?: number } | undefined;
-                setCrosshairData({
+                pendingCrosshairRef.current = {
                     open: candleData.open ?? candleData.value ?? 0,
                     high: candleData.high ?? candleData.value ?? 0,
                     low: candleData.low ?? candleData.value ?? 0,
                     close: candleData.close ?? candleData.value ?? 0,
                     volume: volData?.value ?? 0,
                     time: param.time as number,
-                });
+                };
+
+                if (crosshairRafRef.current === null) {
+                    crosshairRafRef.current = requestAnimationFrame(() => {
+                        crosshairRafRef.current = null;
+                        const next = pendingCrosshairRef.current;
+                        const prev = lastCrosshairRef.current;
+
+                        if (!next) {
+                            if (prev !== null) {
+                                setCrosshairData(null);
+                                lastCrosshairRef.current = null;
+                            }
+                            return;
+                        }
+
+                        const changed = !prev
+                            || prev.time !== next.time
+                            || prev.open !== next.open
+                            || prev.high !== next.high
+                            || prev.low !== next.low
+                            || prev.close !== next.close
+                            || prev.volume !== next.volume;
+
+                        if (changed) {
+                            setCrosshairData(next);
+                            lastCrosshairRef.current = next;
+                        }
+                    });
+                }
             }
         });
 
@@ -952,6 +1010,10 @@ function Chart() {
         resizeObserver.observe(chartContainerRef.current);
 
         return () => {
+            if (crosshairRafRef.current !== null) {
+                cancelAnimationFrame(crosshairRafRef.current);
+                crosshairRafRef.current = null;
+            }
             resizeObserver.disconnect();
             removeAllIndicatorSeries();
             chart.remove();
@@ -1211,11 +1273,30 @@ function Chart() {
         if (!chartRef.current) return;
         const chart = chartRef.current;
 
+        const flushPreviewData = () => {
+            previewRafRef.current = null;
+            if (previewSeriesRef.current && pendingPreviewDataRef.current) {
+                previewSeriesRef.current.setData(pendingPreviewDataRef.current);
+            }
+        };
+
+        const schedulePreviewUpdate = (data: Array<{ time: UTCTimestamp; value: number }>) => {
+            pendingPreviewDataRef.current = data;
+            if (previewRafRef.current === null) {
+                previewRafRef.current = requestAnimationFrame(flushPreviewData);
+            }
+        };
+
         // Immediately clean up preview if drawing cancels or finishes
         if (!drawingStatus) {
             if (previewSeriesRef.current) {
                 chart.removeSeries(previewSeriesRef.current);
                 previewSeriesRef.current = null;
+            }
+            pendingPreviewDataRef.current = null;
+            if (previewRafRef.current !== null) {
+                cancelAnimationFrame(previewRafRef.current);
+                previewRafRef.current = null;
             }
         }
 
@@ -1228,9 +1309,14 @@ function Chart() {
 
             // Handle Pencil preview
             if (isDraggingPencilRef.current && currentActiveTool === 'pencil') {
-                const arr = pencilPointsRef.current.filter(p => p.time !== param.time);
-                arr.push({ time: param.time as number, price });
-                pencilPointsRef.current = arr;
+                const nextPoint = { time: param.time as number, price };
+                const points = pencilPointsRef.current;
+                const lastIdx = points.length - 1;
+                if (lastIdx >= 0 && points[lastIdx].time === nextPoint.time) {
+                    points[lastIdx] = nextPoint;
+                } else {
+                    points.push(nextPoint);
+                }
 
                 if (!previewSeriesRef.current) {
                     previewSeriesRef.current = chart.addSeries(LineSeries, {
@@ -1241,8 +1327,7 @@ function Chart() {
                         lastValueVisible: false,
                     });
                 }
-                const sorted = [...arr].sort((a, b) => a.time - b.time);
-                previewSeriesRef.current.setData(sorted.map(p => ({ time: p.time as UTCTimestamp, value: p.price })));
+                schedulePreviewUpdate(points.map(p => ({ time: p.time as UTCTimestamp, value: p.price })));
                 return;
             }
 
@@ -1263,22 +1348,30 @@ function Chart() {
 
             const p1 = drawingStatus.points[0];
             const p2 = { time: param.time as number, price };
-            const sorted = [p1, p2].sort((a, b) => a.time - b.time);
+            const first = p1.time <= p2.time ? p1 : p2;
+            const second = p1.time <= p2.time ? p2 : p1;
 
-            if (sorted[0].time === sorted[1].time) {
-                previewSeriesRef.current.setData([
-                    { time: sorted[0].time as UTCTimestamp, value: sorted[1].price }
+            if (first.time === second.time) {
+                schedulePreviewUpdate([
+                    { time: first.time as UTCTimestamp, value: second.price }
                 ]);
             } else {
-                previewSeriesRef.current.setData([
-                    { time: sorted[0].time as UTCTimestamp, value: sorted[0].price },
-                    { time: sorted[1].time as UTCTimestamp, value: sorted[1].price }
+                schedulePreviewUpdate([
+                    { time: first.time as UTCTimestamp, value: first.price },
+                    { time: second.time as UTCTimestamp, value: second.price }
                 ]);
             }
         };
 
         chart.subscribeCrosshairMove(handleMouseMove);
-        return () => chart.unsubscribeCrosshairMove(handleMouseMove);
+        return () => {
+            if (previewRafRef.current !== null) {
+                cancelAnimationFrame(previewRafRef.current);
+                previewRafRef.current = null;
+            }
+            pendingPreviewDataRef.current = null;
+            chart.unsubscribeCrosshairMove(handleMouseMove);
+        };
     }, [drawingStatus]);
 
     // Initial tool state: disable chart scroll/scale if pencil is active
@@ -1427,7 +1520,7 @@ function Chart() {
             createSeriesMarkers(seriesRef.current.candle, markers.sort((a, b) => a.time - b.time));
         }
 
-    }, [drawings, candles, removeAllDrawings, theme]);
+    }, [drawings, removeAllDrawings, theme]);
 
     // Real-time updates
     const latestCandle = useMarketStore(s => s.latestCandle);
