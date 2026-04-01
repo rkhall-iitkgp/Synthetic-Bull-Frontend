@@ -1,0 +1,353 @@
+import useMarketStore from '../store/useMarketStore';
+
+export const candleWorker = new Worker(new URL('../workers/candleWorker.ts', import.meta.url), {
+    type: 'module',
+});
+
+candleWorker.onmessage = (e) => {
+    const { type, candle, candles } = e.data;
+
+    if (type === 'CANDLE_UPDATE') {
+        useMarketStore.getState().setLatestCandle(candle);
+    }
+    else if (type === 'HISTORY_UPDATE') {
+        useMarketStore.getState().setCandlesData(candles);
+    }
+    else if (type === 'CLEAR') {
+        // Worker reset — clear all chart data
+        useMarketStore.getState().clearCandles();
+    }
+};
+
+// Track which symbols already have history fetched — avoids redundant re-fetches
+const fetchedSymbols = new Set<string>();
+export function isSymbolCached(symbol: string): boolean {
+    return fetchedSymbols.has(symbol);
+}
+
+/**
+ * Change the candle timeframe. Call this when the user clicks a timeframe button.
+ * It re-initializes the worker which clears history and starts fresh aggregation.
+ */
+export function requestHistory(symbol?: string) {
+    const sym = symbol || useMarketStore.getState().currentSymbol;
+    wsManager.send({ type: 'get_history', symbol: sym });
+}
+
+useMarketStore.subscribe((state, prevState) => {
+    if (state.currentSymbol !== prevState.currentSymbol || state.timeframe !== prevState.timeframe) {
+        candleWorker.postMessage({
+            type: 'INIT',
+            payload: { timeframeSec: state.timeframe, symbol: state.currentSymbol }
+        });
+        if (!isSymbolCached(state.currentSymbol)) {
+            requestHistory();
+        }
+    }
+
+    if (prevState.isReplayMode && !state.isReplayMode) {
+        // Fresh re-fetch required to bridge the time gap created during Replay
+        requestHistory(state.currentSymbol);
+    }
+});
+
+export function changeTimeframe(seconds: number) {
+    if (useMarketStore.getState().timeframe !== seconds) {
+        useMarketStore.getState().setTimeframe(seconds);
+    }
+}
+
+class WSManager {
+    private url: string;
+    private ws: WebSocket | null = null;
+    private reconnectDelay = 1000;
+    private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+    constructor(url: string) {
+        this.url = url;
+    }
+
+    connect() {
+        this.ws = new WebSocket(this.url);
+
+        this.ws.onopen = () => {
+            console.log('WS connected');
+            this.reconnectDelay = 1000;
+            useMarketStore.getState().setWsConnected(true);
+
+            // Initialize the candle worker with current timeframe
+            const initState = useMarketStore.getState();
+            candleWorker.postMessage({
+                type: 'INIT',
+                payload: { timeframeSec: initState.timeframe, symbol: initState.currentSymbol }
+            });
+
+            // Ask for symbol list in case welcome arrives before UI is ready.
+            this.send({ type: 'get_symbols' });
+
+            // Ask for history of current symbol
+            requestHistory();
+
+            // Subscribe to all watchlist symbols for real-time updates
+            const watchlist = useMarketStore.getState().watchlist;
+            watchlist.forEach(s => {
+                if (s !== useMarketStore.getState().currentSymbol) {
+                    this.send({ type: 'get_history', symbol: s });
+                }
+            });
+        };
+
+        this.ws.onmessage = (event) => {
+            try {
+                const msg = JSON.parse(event.data);
+
+                const state = useMarketStore.getState();
+                const msgType = msg?.type;
+
+                if (msgType === 'welcome' || msgType === 'symbols') {
+                    const rawSymbols = Array.isArray(msg.symbols) ? msg.symbols : [];
+                    const symbols = rawSymbols.map((item: { symbol?: string; name?: string; category?: string; asset_type?: string } | string) => typeof item === 'string' ? item : item.symbol).filter(Boolean);
+                    const tickers = rawSymbols.map((item: { symbol?: string; name?: string; category?: string; asset_type?: string } | string) => ({
+                        symbol: typeof item === 'string' ? item : item.symbol,
+                        name: typeof item === 'string' ? '' : (item.name || ''),
+                        category: typeof item === 'string' ? 'Stocks' : (item.category || item.asset_type || 'Stocks'),
+                    })).filter((t: { symbol?: string }) => t.symbol);
+
+                    if (symbols.length > 0) {
+                        state.setSymbols(symbols);
+                        state.setTickers(tickers);
+                        if (!symbols.includes(state.currentSymbol)) {
+                            state.setCurrentSymbol(symbols[0]);
+                        }
+                    }
+
+                    if (msgType === 'welcome' && typeof msg.user_id === 'string') {
+                        state.setUserId(msg.user_id);
+                    }
+                    return;
+                }
+
+                if (msgType === 'orderbook') {
+                    if (msg.symbol !== state.currentSymbol) return;
+
+                    const bids = Array.isArray(msg.bids)
+                        ? msg.bids.map((level: [number, number]) => ({ price: level[0], qty: level[1] }))
+                        : [];
+                    const asks = Array.isArray(msg.asks)
+                        ? msg.asks.map((level: [number, number]) => ({ price: level[0], qty: level[1] }))
+                        : [];
+                    state.setOrderBook(bids, asks);
+                    return;
+                }
+
+                if (msgType === 'trade') {
+                    const price = Number(msg.price || 0);
+                    const sym = String(msg.symbol || state.currentSymbol);
+                    if (sym === state.currentSymbol && state.candles.length > 0) {
+                        const openPrice = state.candles[0].open;
+                        const change = openPrice > 0 ? ((price - openPrice) / openPrice) * 100 : 0;
+                        state.setPrice(sym, price, change);
+                    } else {
+                        state.setPrice(sym, price);
+                    }
+
+                    if (sym !== state.currentSymbol) return;
+
+                    const rawTs = msg.ts ?? msg.t ?? msg.time ?? msg.timestamp;
+                    const fallbackTs = state.latestCandle ? state.latestCandle.time * 1000 : Date.now();
+                    const ts = rawTs ? normalizeToMs(rawTs) : fallbackTs;
+                    const inferredSide: 'BUY' | 'SELL' =
+                        msg.buyer === state.userId
+                            ? 'BUY'
+                            : msg.seller === state.userId
+                                ? 'SELL'
+                                : msg.price >= state.lastPrice
+                                    ? 'BUY'
+                                    : 'SELL';
+
+                    const trade = {
+                        id: Number(msg.id || 0),
+                        symbol: sym,
+                        price: price,
+                        qty: Number(msg.qty || 0),
+                        side: inferredSide,
+                        timestamp: ts,
+                        buyer: msg.buyer,
+                        seller: msg.seller,
+                    };
+
+                    state.addTrade(trade);
+                    candleWorker.postMessage({
+                        type: 'TICK',
+                        payload: { price: trade.price, qty: trade.qty, timestamp: ts, symbol: trade.symbol }
+                    });
+                    return;
+                }
+
+                if (msgType === 'history') {
+                    // if (msg.symbol !== state.currentSymbol) return; // This line moves down
+
+                    const candles = msg.candles.map((c: Record<string, unknown>) => ({
+                        time: normalizeToSec(c.t ?? c.ts ?? c.time),
+                        open: Number(c.o || 0),
+                        high: Number(c.h || 0),
+                        low: Number(c.l || 0),
+                        close: Number(c.c || 0),
+                        volume: Number(c.v || 0),
+                    }));
+
+                    if (candles.length > 0) {
+                        const closePrice = candles[candles.length - 1].close;
+                        const openPrice = candles[0].open;
+                        const change = openPrice > 0 ? ((closePrice - openPrice) / openPrice) * 100 : 0;
+                        state.setPrice(msg.symbol, closePrice, change);
+                    }
+
+                    if (msg.symbol !== state.currentSymbol) return;
+                    fetchedSymbols.add(msg.symbol);
+                    candleWorker.postMessage({ type: 'HISTORY', payload: candles });
+                    return;
+                }
+
+                if (msgType === 'candle') {
+                    const price = Number(msg.c || 0);
+                    if (msg.symbol === state.currentSymbol && state.candles.length > 0) {
+                        const openPrice = state.candles[0].open;
+                        const change = openPrice > 0 ? ((price - openPrice) / openPrice) * 100 : 0;
+                        state.setPrice(msg.symbol, price, change);
+                    } else {
+                        state.setPrice(msg.symbol, price);
+                    }
+
+                    const next = {
+                        symbol: msg.symbol,
+                        time: normalizeToSec(msg.t ?? msg.ts ?? msg.time),
+                        open: Number(msg.o || 0),
+                        high: Number(msg.h || 0),
+                        low: Number(msg.l || 0),
+                        close: price,
+                        volume: Number(msg.v || 0),
+                    };
+
+                    candleWorker.postMessage({ type: 'CANDLE_1S', payload: next });
+                    return;
+                }
+
+                if (msgType === 'portfolio') {
+                    const positions = msg.positions && typeof msg.positions === 'object' ? msg.positions : {};
+                    const holdings = Object.entries(positions).map(([asset, raw]) => {
+                        const value = raw as {
+                            holdings?: number;
+                            avg_cost?: number;
+                            market_value?: number;
+                            realized_pnl?: number;
+                            unrealized_pnl?: number;
+                        };
+
+                        const qty = Number(value.holdings || 0);
+                        const marketValue = Number(value.market_value || 0);
+                        return {
+                            asset,
+                            qty,
+                            avgPrice: Number(value.avg_cost || 0),
+                            currentPrice: Math.abs(qty) > 1e-12 ? marketValue / qty : 0,
+                            marketValue,
+                            realizedPnl: Number(value.realized_pnl || 0),
+                            unrealizedPnl: Number(value.unrealized_pnl || 0),
+                        };
+                    });
+
+                    state.setPortfolio({
+                        cash: Number(msg.cash || 0),
+                        holdings,
+                        realizedPnl: Number(msg.realized_pnl || 0),
+                        unrealizedPnl: Number(msg.unrealized_pnl || 0),
+                        totalValue: Number(msg.total_value || 0),
+                    });
+                    return;
+                }
+
+                if (msgType === 'open_orders') {
+                    const orders = Array.isArray(msg.orders)
+                        ? msg.orders.map((order: {
+                            order_id: number;
+                            symbol: string;
+                            side: 'buy' | 'sell';
+                            price: number;
+                            orig_qty: number;
+                            remaining_qty: number;
+                        }) => ({
+                            order_id: Number(order.order_id),
+                            symbol: String(order.symbol),
+                            side: order.side === 'buy' ? 'BUY' : 'SELL' as const,
+                            type: 'limit' as const,
+                            price: Number(order.price || 0),
+                            qty: Number(order.orig_qty || 0),
+                            remainingQty: Number(order.remaining_qty || 0),
+                            status: 'Open',
+                        }))
+                        : [];
+                    state.setOpenOrders(orders);
+                    return;
+                }
+
+                if (msgType === 'error') {
+                    console.warn('Server error:', msg.message);
+                    const isUnknownType = msg.message?.toLowerCase().includes('unknown message type');
+                    if (!isUnknownType) {
+                        state.addNotification(msg.message || 'An unknown error occurred', 'error');
+                    }
+                    return;
+                }
+            } catch {
+                // ignore JSON errors
+            }
+        };
+
+        this.ws.onclose = () => {
+            fetchedSymbols.clear();
+            useMarketStore.getState().setWsConnected(false);
+            console.log(`WS closed, reconnecting in ${this.reconnectDelay}ms`);
+            if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+            this.reconnectTimer = setTimeout(() => this.connect(), this.reconnectDelay);
+            this.reconnectDelay = Math.min(this.reconnectDelay * 1.5, 30000);
+        };
+    }
+
+    send(message: Record<string, unknown>) {
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            this.ws.send(JSON.stringify(message));
+        }
+    }
+}
+
+function normalizeToMs(ts: unknown): number {
+    if (typeof ts === 'string') {
+        const trimmed = ts.trim();
+        if (!trimmed) return Date.now();
+
+        const numeric = Number(trimmed);
+        if (Number.isFinite(numeric) && numeric > 0) {
+            if (numeric > 1e14) return Math.floor(numeric / 1000);
+            return numeric < 1e12 ? numeric * 1000 : numeric;
+        }
+
+        const parsed = Date.parse(trimmed);
+        if (Number.isFinite(parsed) && parsed > 0) {
+            return parsed;
+        }
+
+        return Date.now();
+    }
+
+    const value = Number(ts ?? 0);
+    if (!Number.isFinite(value) || value <= 0) return Date.now();
+    if (value > 1e14) return Math.floor(value / 1000);
+    return value < 1e12 ? value * 1000 : value;
+}
+
+function normalizeToSec(ts: unknown): number {
+    return Math.floor(normalizeToMs(ts) / 1000);
+}
+
+export const wsManager = new WSManager(import.meta.env.VITE_WS_URL || 'ws://localhost:9001');
