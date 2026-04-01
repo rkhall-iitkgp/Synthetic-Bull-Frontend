@@ -88,6 +88,31 @@ export interface Drawing {
     text?: string;
 }
 
+export interface FibonacciLevel {
+    ratio: number;
+    price: number;
+    color: string;
+    visible: boolean;
+    width: number;
+    lineStyle: 'solid' | 'dashed' | 'dotted';
+}
+
+export interface FibonacciDrawing {
+    id: string;
+    topPrice: number;
+    bottomPrice: number;
+    topTime: number;
+    bottomTime: number;
+    direction: 'downtrend' | 'uptrend';
+    levels: FibonacciLevel[];
+    visible: boolean;
+    locked: boolean;
+    extendLeft: boolean;
+    extendRight: boolean;
+    showBackgroundFill: boolean;
+    createdAt: number;
+}
+
 export interface BotConfig {
     spread?: number;
     size?: number;
@@ -193,6 +218,7 @@ interface MarketState {
     watchlist: string[];
     activeTool: string;
     drawings: Drawing[];
+    fibonacciDrawings: FibonacciDrawing[];
     prices: Record<string, number>;
     priceChanges: Record<string, number>;
 
@@ -215,6 +241,7 @@ interface MarketState {
     
     // Notification State
     notifications: { id: string; message: string; type: 'success' | 'error' | 'info' }[];
+    alerts: Alert[];
     
     setTimeframe: (seconds: number) => void;
     setCurrentSymbol: (symbol: string) => void;
@@ -243,6 +270,11 @@ interface MarketState {
     setActiveTool: (tool: string) => void;
     setDrawings: (drawings: Drawing[] | ((prev: Drawing[]) => Drawing[])) => void;
     clearDrawings: () => void;
+    addFibonacciDrawing: (drawing: FibonacciDrawing) => void;
+    updateFibonacciDrawing: (drawing: FibonacciDrawing) => void;
+    removeFibonacciDrawing: (drawingId: string) => void;
+    setFibonacciDrawings: (drawings: FibonacciDrawing[]) => void;
+    clearFibonacciDrawings: () => void;
     setBotStatus: (botId: string, status: 'running' | 'stopped' | 'standby') => void;
     updateBotConfig: (botId: string, config: Partial<BotConfig>) => void;
 
@@ -311,6 +343,7 @@ const useMarketStore = create<MarketState>((set) => ({
     watchlist: ['AAPL', 'BTC', 'ETH'],
     activeTool: 'crosshair',
     drawings: [],
+    fibonacciDrawings: [],
     prices: {},
     priceChanges: {},
     historySequence: 0,
@@ -561,6 +594,22 @@ const useMarketStore = create<MarketState>((set) => ({
         drawings: typeof drawingsOrFn === 'function' ? (drawingsOrFn as (prev: Drawing[]) => Drawing[])(state.drawings) : drawingsOrFn
     })),
     clearDrawings: () => set({ drawings: [] }),
+
+    addFibonacciDrawing: (drawing) => set((state) => ({
+        fibonacciDrawings: [...state.fibonacciDrawings, drawing]
+    })),
+
+    updateFibonacciDrawing: (drawing) => set((state) => ({
+        fibonacciDrawings: state.fibonacciDrawings.map(d => d.id === drawing.id ? drawing : d)
+    })),
+
+    removeFibonacciDrawing: (drawingId) => set((state) => ({
+        fibonacciDrawings: state.fibonacciDrawings.filter(d => d.id !== drawingId)
+    })),
+
+    setFibonacciDrawings: (drawings) => set({ fibonacciDrawings: drawings }),
+
+    clearFibonacciDrawings: () => set({ fibonacciDrawings: [] }),
 
     setBotStatus: (botId, status) => set((state) => ({
         botStatus: { ...state.botStatus, [botId]: status }

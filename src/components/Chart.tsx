@@ -353,6 +353,21 @@ const TrendLineIcon = ({ size = 24, className = "" }: { size?: number, className
     </svg>
 );
 
+const FibonacciIcon = ({ size = 24, className = "" }: { size?: number, className?: string }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+        <line x1="2" y1="20" x2="22" y2="20" />
+        <line x1="2" y1="16" x2="8" y2="16" />
+        <line x1="2" y1="12" x2="14" y2="12" />
+        <line x1="2" y1="8" x2="8" y2="8" />
+        <line x1="2" y1="4" x2="5" y2="4" />
+        <circle cx="2" cy="20" r="1.5" fill="currentColor" />
+        <circle cx="2" cy="16" r="1.5" fill="currentColor" />
+        <circle cx="2" cy="12" r="1.5" fill="currentColor" />
+        <circle cx="2" cy="8" r="1.5" fill="currentColor" />
+        <circle cx="2" cy="4" r="1.5" fill="currentColor" />
+    </svg>
+);
+
 // ─── Alert Modal Component ──────────────────────────────────────────────────
 function AlertModal({ onClose }: { onClose: () => void }) {
     const currentSymbol = useMarketStore(s => s.currentSymbol);
@@ -527,6 +542,7 @@ function ChartToolbar() {
         { id: 'ray', icon: MoveHorizontal, label: 'Horizontal Ray (Alt+H)' },
         null, // separator
         { id: 'text', icon: Type, label: 'Text' },
+        { id: 'fibonacci', icon: FibonacciIcon, label: 'Fibonacci Retracement' },
         null, // separator
         { id: 'measure', icon: Ruler, label: 'Measure (M)' },
         { id: 'zoom', icon: ZoomIn, label: 'Zoom In (Ctrl+↑)' },
@@ -1388,17 +1404,21 @@ function Chart() {
                         const temp = p1; p1 = p2; p2 = temp;
                     }
                     const diff = p2.price - p1.price;
-                    const levels = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
-                    const colors = ['#787b86', '#ef5350', '#ff9800', '#4caf50', '#089981', '#2962ff', '#787b86'];
+                    const levels = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1, 1.618, 2.618, 3.618, 4.236];
+                    const colors = ['#ff0000', '#ffaa00', '#ffff00', '#ff00ff', '#00ff00', '#00ffff', '#0000ff', '#9900ff', '#ffa500', '#ff69b4', '#00ced1'];
                     levels.forEach((level, i) => {
+                        const priceLevel = p1.price + (diff * level);
+                        const ratioLabel = `${(level * 100).toFixed(1)}%`;
+                        
+                        // Add line series for visual representation
                         const line = chart.addSeries(LineSeries, {
                             color: colors[i],
-                            lineWidth: 1,
-                            lineStyle: 2,
+                            lineWidth: level === 1 ? 2 : 1,
+                            lineStyle: (level === 0 || level === 1) ? 0 : 2,
                             priceLineVisible: false,
                             lastValueVisible: false,
                         });
-                        const priceLevel = p1.price + (diff * level);
+                        
                         if (p1.time === p2.time) {
                             line.setData([{ time: p1.time as UTCTimestamp, value: priceLevel }]);
                         } else {
@@ -1408,6 +1428,28 @@ function Chart() {
                             ]);
                         }
                         drawingSeriesRef.current.push(line);
+                        
+                        // Add price line with ratio label on the right side
+                        if (seriesRef.current?.candle) {
+                            const priceLine = seriesRef.current.candle.createPriceLine({
+                                price: priceLevel,
+                                color: colors[i],
+                                lineWidth: level === 1 ? 2 : 1,
+                                lineStyle: (level === 0 || level === 1) ? 0 : 2,
+                                axisLabelVisible: true,
+                                title: ratioLabel,
+                            });
+                            drawingPriceLinesRef.current.push({ series: seriesRef.current.candle, line: priceLine });
+                        }
+                        
+                        // Add marker at the end with ratio and price
+                        markers.push({
+                            time: p2.time as UTCTimestamp,
+                            position: 'aboveBar',
+                            color: colors[i],
+                            shape: 'circle',
+                            text: `${ratioLabel}: $${priceLevel.toFixed(2)}`,
+                        });
                     });
                 }
             } else if (d.type === 'text') {
