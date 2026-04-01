@@ -4,11 +4,12 @@ import { changeTimeframe } from '../services/websocket';
 import { TickerSearch } from './Chart';
 import { useTheme } from '../store/ThemeContext';
 import { useNavigate } from 'react-router-dom';
+import LayoutPicker from './LayoutPicker';
 import {
     Menu, RotateCcw,
     Search, Maximize2, Minimize2, Sun, Moon, LayoutDashboard, X,
     UserRound, UserPlus, Wallet, ChartNoAxesColumn, Sigma, Bookmark, Trophy, Flame, ShoppingBag, ChevronDown,
-    Bell, CandlestickChart as CandlestickTypeIcon
+    Bell, CandlestickChart as CandlestickTypeIcon, Grid3x3
 } from 'lucide-react';
 
 type StaticIndicator = {
@@ -109,6 +110,9 @@ export default function Header() {
     const [isTimeframeOpen, setIsTimeframeOpen] = useState(false);
     const timeframeRef = useRef<HTMLDivElement>(null);
 
+    const [isLayoutOpen, setIsLayoutOpen] = useState(false);
+    const layoutRef = useRef<HTMLDivElement>(null);
+
     const [isFullscreen, setIsFullscreen] = useState(false);
 
     useEffect(() => {
@@ -171,6 +175,9 @@ export default function Header() {
             }
             if (!timeframeRef.current?.contains(event.target as Node)) {
                 setIsTimeframeOpen(false);
+            }
+            if (!layoutRef.current?.contains(event.target as Node)) {
+                setIsLayoutOpen(false);
             }
         };
 
@@ -281,6 +288,22 @@ export default function Header() {
                                 </button>
                             ))}
                         </div>
+                    )}
+                </div>
+
+                {/* Layout selector */}
+                <div className="tv-layout-wrap" ref={layoutRef} style={{ position: 'relative' }}>
+                    <button
+                        type="button"
+                        className={`tv-header-btn ${isLayoutOpen ? 'active' : ''}`}
+                        onClick={() => setIsLayoutOpen((prev) => !prev)}
+                        title="Layout"
+                    >
+                        <Grid3x3 size={20} />
+                    </button>
+
+                    {isLayoutOpen && (
+                        <LayoutPicker onClose={() => setIsLayoutOpen(false)} />
                     )}
                 </div>
 

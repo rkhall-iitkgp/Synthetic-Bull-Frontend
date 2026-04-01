@@ -632,12 +632,12 @@ class ChartErrorBoundary extends React.Component<{ children: React.ReactNode }, 
     }
 }
 
-export default function ChartContainer() {
-    return <ChartErrorBoundary><Chart /></ChartErrorBoundary>;
+export default function ChartContainer({ paneId }: { paneId?: string }) {
+    return <ChartErrorBoundary><Chart paneId={paneId} /></ChartErrorBoundary>;
 }
 
 // ─── Main Chart Component ───────────────────────────────────────────────────
-function Chart() {
+function Chart({ paneId }: { paneId?: string }) {
     const { theme } = useTheme();
     const chartContainerRef = useRef<HTMLDivElement>(null);
     const chartRef = useRef<IChartApi | null>(null);
@@ -646,11 +646,27 @@ function Chart() {
         volume: ISeriesApi<"Histogram">;
     } | null>(null);
 
+    // Get global state
     const candles = useMarketStore(s => s.candles);
     const historySequence = useMarketStore(s => s.historySequence);
-    const enabledIndicators = useMarketStore((s) => s.enabledIndicators);
-    const chartType = useMarketStore(s => s.chartType);
-    const currentSymbol = useMarketStore(s => s.currentSymbol);
+    const globalSymbol = useMarketStore(s => s.currentSymbol);
+    
+    // Get pane-specific candles if available
+    const paneCandles = paneId ? useMarketStore(s => s.paneCandles[paneId]) : undefined;
+    const setPaneCandles = useMarketStore(s => s.setPaneCandles);
+
+    // Get pane-specific config if paneId is provided, otherwise use global
+    const globalChartType = useMarketStore(s => s.chartType);
+    const globalEnabledIndicators = useMarketStore(s => s.enabledIndicators);
+    const paneConfig = paneId ? useMarketStore(s => s.paneConfigs[paneId]) : null;
+
+    const currentSymbol = paneConfig?.symbol || globalSymbol;
+    const chartType = paneConfig?.chartType || globalChartType;
+    const enabledIndicators = paneConfig?.enabledIndicators || globalEnabledIndicators;
+    
+    // Decide which candles to display: use pane-specific candles if symbol doesn't match global
+    const displayCandles = (paneId && currentSymbol !== globalSymbol && paneCandles) ? paneCandles : candles;
+    
     const setCrosshairData = useMarketStore(s => s.setCrosshairData);
     const activeTool = useMarketStore(s => s.activeTool);
     const setActiveTool = useMarketStore(s => s.setActiveTool);
@@ -715,6 +731,20 @@ function Chart() {
 
     const indicatorSeriesRef = useRef<IndicatorSeriesBucket>({ line: [], histogram: [] });
     const lastSymbolRef = useRef<string>('');
+
+    // Sync global candles to pane's cache when symbol matches
+    useEffect(() => {
+        if (paneId && currentSymbol === globalSymbol && candles.length > 0) {
+            setPaneCandles(paneId, candles);
+        }
+    }, [paneId, currentSymbol, globalSymbol, candles, setPaneCandles]);
+
+    // Request history for this pane's symbol when it first mounts or symbol changes
+    useEffect(() => {
+        if (paneId && currentSymbol && !isSymbolCached(currentSymbol)) {
+            requestHistory(currentSymbol);
+        }
+    }, [paneId, currentSymbol]);
 
     const removeAllIndicatorSeries = useCallback(() => {
         if (!chartRef.current) return;
@@ -1025,7 +1055,7 @@ function Chart() {
     // Batch data sync — triggers only on history load/clear (historySequence), not individual candle updates
     useEffect(() => {
         if (!seriesRef.current) return;
-        const currentCandles = useMarketStore.getState().candles;
+        const currentCandles = displayCandles;
 
         if (currentCandles.length === 0) {
             seriesRef.current.candle.setData([]);
@@ -1043,7 +1073,7 @@ function Chart() {
         // Scroll to latest candle — prevents "replay from start" on initial load
         chartRef.current?.timeScale().scrollToRealTime();
         lastSymbolRef.current = currentSymbol;
-    }, [historySequence, formatCandleData, currentSymbol]);
+    }, [historySequence, formatCandleData, currentSymbol, displayCandles]);
 
     // Shortcuts and Custom Events implementation
     useEffect(() => {
@@ -1527,15 +1557,15 @@ function Chart() {
     useEffect(() => {
         if (!seriesRef.current || !latestCandle || !chartRef.current) return;
 
-        if (candles.length === 0) {
+        if (displayCandles.length === 0) {
             return;
         }
 
         // Bootstrap the visible series from current store candles if initial data
         // arrived through live candle messages before a history-sequence sync.
         if (lastSymbolRef.current !== currentSymbol) {
-            seriesRef.current.candle.setData(candles.map(formatCandleData));
-            seriesRef.current.volume.setData(candles.map(c => ({
+            seriesRef.current.candle.setData(displayCandles.map(formatCandleData));
+            seriesRef.current.volume.setData(displayCandles.map(c => ({
                 time: c.time as UTCTimestamp,
                 value: c.volume,
                 color: c.close >= c.open ? 'rgba(38, 166, 154, 0.5)' : 'rgba(239, 83, 80, 0.5)',
@@ -1555,21 +1585,21 @@ function Chart() {
         } catch (e) {
             console.warn('Silent chart update failure:', e);
         }
-    }, [latestCandle, formatCandleData, currentSymbol, candles.length]);
+    }, [latestCandle, formatCandleData, currentSymbol, displayCandles.length, displayCandles]);
 
     // Recalculate and redraw indicator series whenever candles or enabled indicators change
     useEffect(() => {
         if (!chartRef.current) return;
 
         removeAllIndicatorSeries();
-        if (!candles.length || enabledIndicators.length === 0) return;
+        if (!displayCandles.length || enabledIndicators.length === 0) return;
 
         const chart = chartRef.current;
-        const closeValues = candles.map((candle) => candle.close);
+        const closeValues = displayCandles.map((candle) => candle.close);
 
         const lineDataFromValues = (values: Array<number | null>) => (
             values
-                .map((value, idx) => (value == null ? null : { time: candles[idx].time as UTCTimestamp, value }))
+                .map((value, idx) => (value == null ? null : { time: displayCandles[idx].time as UTCTimestamp, value }))
                 .filter((point): point is { time: UTCTimestamp; value: number } => point !== null)
         );
 
@@ -1687,7 +1717,7 @@ function Chart() {
                         value == null
                             ? null
                             : {
-                                time: candles[idx].time as UTCTimestamp,
+                                time: displayCandles[idx].time as UTCTimestamp,
                                 value,
                                 color: value >= 0 ? 'rgba(38,166,154,0.5)' : 'rgba(239,83,80,0.5)',
                             }
@@ -1699,7 +1729,7 @@ function Chart() {
             addLineIndicator(signalLine);
             addHistogramIndicator(histogram);
         }
-    }, [addHistogramIndicator, addLineIndicator, candles, enabledIndicators, removeAllIndicatorSeries]);
+    }, [addHistogramIndicator, addLineIndicator, displayCandles, enabledIndicators, removeAllIndicatorSeries]);
 
     return (
         <div className="chart-root">

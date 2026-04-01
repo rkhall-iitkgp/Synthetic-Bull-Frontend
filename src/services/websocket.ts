@@ -185,8 +185,6 @@ class WSManager {
                 }
 
                 if (msgType === 'history') {
-                    // if (msg.symbol !== state.currentSymbol) return; // This line moves down
-
                     const candles = msg.candles.map((c: Record<string, unknown>) => ({
                         time: normalizeToSec(c.t ?? c.ts ?? c.time),
                         open: Number(c.o || 0),
@@ -203,9 +201,16 @@ class WSManager {
                         state.setPrice(msg.symbol, closePrice, change);
                     }
 
-                    if (msg.symbol !== state.currentSymbol) return;
-                    fetchedSymbols.add(msg.symbol);
-                    candleWorker.postMessage({ type: 'HISTORY', payload: candles });
+                    // Only process history for current symbol through worker
+                    // For other symbols, store directly via setCandlesData
+                    if (msg.symbol === state.currentSymbol) {
+                        fetchedSymbols.add(msg.symbol);
+                        candleWorker.postMessage({ type: 'HISTORY', payload: candles });
+                    } else {
+                        // Store non-current symbol data directly in paneCandles
+                        fetchedSymbols.add(msg.symbol);
+                        state.setCandlesData(candles, null, msg.symbol);
+                    }
                     return;
                 }
 
