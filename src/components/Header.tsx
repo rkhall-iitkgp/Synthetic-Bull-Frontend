@@ -5,11 +5,12 @@ import { TickerSearch } from './Chart';
 import { useTheme } from '../store/ThemeContext';
 import { formatShortcutLabel } from '../lib/platform';
 import { useNavigate } from 'react-router-dom';
+import LayoutPicker from './LayoutPicker';
 import {
     Menu, RotateCcw,
     Search, Maximize2, Minimize2, Sun, Moon, LayoutDashboard, X, Plus,
     UserRound, UserPlus, Wallet, ChartNoAxesColumn, Sigma, Bookmark, Trophy, Flame, ShoppingBag, ChevronDown,
-    Bell, CandlestickChart as CandlestickTypeIcon, Home, HelpCircle, Zap, Keyboard, Globe
+    Bell, CandlestickChart as CandlestickTypeIcon, Home, HelpCircle, Zap, Keyboard, Globe, Grid3x3
 } from 'lucide-react';
 
 
@@ -72,6 +73,9 @@ export default function Header() {
     const [isTimeframeOpen, setIsTimeframeOpen] = useState(false);
     const timeframeRef = useRef<HTMLDivElement>(null);
 
+    const [isLayoutOpen, setIsLayoutOpen] = useState(false);
+    const layoutRef = useRef<HTMLDivElement>(null);
+
     const [isFullscreen, setIsFullscreen] = useState(false);
 
     useEffect(() => {
@@ -131,6 +135,9 @@ export default function Header() {
             if (!timeframeRef.current?.contains(event.target as Node)) {
                 setIsTimeframeOpen(false);
             }
+            if (!layoutRef.current?.contains(event.target as Node)) {
+                setIsLayoutOpen(false);
+            }
         };
 
         const handleShortcuts = (event: KeyboardEvent) => {
@@ -176,8 +183,8 @@ export default function Header() {
             <div className="tv-header-left">
                 {/* Menu / Logo */}
                 <div className="relative" ref={menuRef}>
-                    <button 
-                        type="button" 
+                    <button
+                        type="button"
                         className={`tv-header-btn ${isMenuOpen ? 'active' : ''}`}
                         title="Menu"
                         onClick={() => setIsMenuOpen(v => !v)}
@@ -199,9 +206,9 @@ export default function Header() {
                                 <Zap size={18} className="text-text-secondary" />
                                 <span>What's new</span>
                             </button>
-                            
+
                             <div className="h-px bg-border-subtle my-1 w-full" />
-                            
+
                             <button className="flex items-center justify-between px-4 py-2.5 hover:bg-border-subtle transition-colors text-left" onClick={() => toggleTheme()}>
                                 <div className="flex items-center gap-3">
                                     {theme === 'dark' ? <Moon size={18} className="text-text-secondary" /> : <Sun size={18} className="text-text-secondary" />}
@@ -221,7 +228,7 @@ export default function Header() {
                             </button>
 
                             <div className="h-px bg-border-subtle my-1 w-full" />
-                            
+
                             <button className="flex items-center justify-between px-4 py-2.5 hover:bg-border-subtle transition-colors text-left" onClick={() => { setIsMenuOpen(false); window.dispatchEvent(new CustomEvent('open-keyboard-shortcuts')); }}>
                                 <div className="flex items-center gap-3">
                                     <Keyboard size={18} className="text-text-secondary" />
@@ -245,7 +252,7 @@ export default function Header() {
                         <span className="font-semibold">{currentSymbol}</span>
                         <span className="text-xs text-text-muted ml-1 hidden sm:inline">Search</span>
                     </button>
-                    <button 
+                    <button
                         className="tv-header-btn text-text-secondary hover:text-white flex items-center justify-center p-1 rounded-md border border-border-subtle"
                         title="Compare Symbol"
                         onClick={() => window.dispatchEvent(new CustomEvent('open-ticker-search', { detail: { mode: 'compare' } }))}
@@ -313,6 +320,22 @@ export default function Header() {
                     )}
                 </div>
 
+                {/* Layout selector */}
+                <div className="tv-layout-wrap" ref={layoutRef} style={{ position: 'relative' }}>
+                    <button
+                        type="button"
+                        className={`tv-header-btn ${isLayoutOpen ? 'active' : ''}`}
+                        onClick={() => setIsLayoutOpen((prev) => !prev)}
+                        title="Layout"
+                    >
+                        <Grid3x3 size={20} />
+                    </button>
+
+                    {isLayoutOpen && (
+                        <LayoutPicker onClose={() => setIsLayoutOpen(false)} />
+                    )}
+                </div>
+
                 <div className="tv-header-separator" />
 
                 {/* Indicators panel */}
@@ -361,20 +384,20 @@ export default function Header() {
                                                 const Icon = item.icon;
                                                 const isActive = activeIndicatorSection === item.label;
                                                 return (
-                                                <button
-                                                    key={item.label}
-                                                    type="button"
-                                                    className={`tv-indicators-sidebar-item ${isActive ? 'active' : ''}`}
-                                                    onClick={() => {
-                                                        setActiveIndicatorSection(item.label);
-                                                        if (item.label !== 'Technicals') {
-                                                            setIndicatorQuery('');
-                                                        }
-                                                    }}
-                                                >
-                                                    <Icon size={20} className="tv-indicators-sidebar-item-icon" />
-                                                    <span>{item.label}</span>
-                                                </button>
+                                                    <button
+                                                        key={item.label}
+                                                        type="button"
+                                                        className={`tv-indicators-sidebar-item ${isActive ? 'active' : ''}`}
+                                                        onClick={() => {
+                                                            setActiveIndicatorSection(item.label);
+                                                            if (item.label !== 'Technicals') {
+                                                                setIndicatorQuery('');
+                                                            }
+                                                        }}
+                                                    >
+                                                        <Icon size={20} className="tv-indicators-sidebar-item-icon" />
+                                                        <span>{item.label}</span>
+                                                    </button>
                                                 );
                                             })}
                                         </div>
@@ -456,8 +479,8 @@ export default function Header() {
 
 
 
-                <button 
-                    type="button" 
+                <button
+                    type="button"
                     className={`tv-header-btn icon-text ${activeTool === 'replay' || isReplayMode ? 'active text-[#2962ff]!' : 'text-text-primary'}`}
                     onClick={() => {
                         if (isReplayMode || activeTool === 'replay') {
@@ -485,9 +508,9 @@ export default function Header() {
 
                 <div className="tv-header-separator" />
 
-                <button 
-                    type="button" 
-                    className="tv-header-btn icon-text" 
+                <button
+                    type="button"
+                    className="tv-header-btn icon-text"
                     title={`Create Alert (${formatShortcutLabel('Alt+A')})`}
                     onClick={() => window.dispatchEvent(new CustomEvent('open-alert-dialog'))}
                 >

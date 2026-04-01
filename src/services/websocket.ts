@@ -31,11 +31,11 @@ export function isSymbolCached(symbol: string): boolean {
 // ── Initial candle batching ──────────────────────────────────────────────────
 // The backend sends candle history as individual 'candle' messages on connect.
 // We batch them per-symbol and flush to the worker as HISTORY after a short pause.
-const pendingCandles: Record<string, Array<{time: number; open: number; high: number; low: number; close: number; volume: number}>> = {};
+const pendingCandles: Record<string, Array<{ time: number; open: number; high: number; low: number; close: number; volume: number }>> = {};
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
 const FLUSH_DELAY = 300; // ms — wait for the initial burst to finish
 
-function queueInitialCandle(symbol: string, candle: {time: number; open: number; high: number; low: number; close: number; volume: number}) {
+function queueInitialCandle(symbol: string, candle: { time: number; open: number; high: number; low: number; close: number; volume: number }) {
     if (!pendingCandles[symbol]) pendingCandles[symbol] = [];
     pendingCandles[symbol].push(candle);
 
@@ -241,8 +241,6 @@ class WSManager {
                 }
 
                 if (msgType === 'history') {
-                    // if (msg.symbol !== state.currentSymbol) return; // This line moves down
-
                     const candles = msg.candles.map((c: Record<string, unknown>) => ({
                         time: normalizeToSec(c.t ?? c.ts ?? c.time),
                         open: Number(c.o || 0),
@@ -259,14 +257,17 @@ class WSManager {
                         state.setPrice(msg.symbol, closePrice, change);
                     }
 
-                    if (msg.symbol !== state.currentSymbol) {
+                    if (msg.symbol === state.currentSymbol) {
+                        fetchedSymbols.add(msg.symbol);
+                        candleWorker.postMessage({ type: 'HISTORY', payload: { symbol: msg.symbol, candles } });
+                    } else {
                         if (state.compareSymbols.includes(msg.symbol)) {
                             state.setCompareCandles(msg.symbol, candles);
                         }
-                        return;
+                        // Store non-current symbol data directly in paneCandles
+                        fetchedSymbols.add(msg.symbol);
+                        state.setCandlesData(candles, null, msg.symbol);
                     }
-                    fetchedSymbols.add(msg.symbol);
-                    candleWorker.postMessage({ type: 'HISTORY', payload: { symbol: msg.symbol, candles } });
                     return;
                 }
 

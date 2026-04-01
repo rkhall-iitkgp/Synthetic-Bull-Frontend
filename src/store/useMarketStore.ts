@@ -88,6 +88,42 @@ export interface Drawing {
     data?: any;
 }
 
+export interface LayoutTemplate {
+    id: string;
+    panes: number;
+    label: string;
+    gridTemplateColumns: string;
+    gridTemplateRows: string;
+    gridTemplateAreas: string;
+    paneAreaNames: string[];
+}
+
+export interface SyncSettings {
+    symbol: boolean;
+    interval: boolean;
+    crosshair: boolean;
+    time: boolean;
+    dateRange: boolean;
+}
+
+export const LAYOUT_TEMPLATES: LayoutTemplate[] = [
+    { id: 'l1',   panes: 1, label: '1 Pane',       gridTemplateColumns: '1fr',       gridTemplateRows: '1fr',       gridTemplateAreas: '"a"',                 paneAreaNames: ['a'] },
+    { id: 'l2h',  panes: 2, label: '2 Horizontal',  gridTemplateColumns: '1fr 1fr',   gridTemplateRows: '1fr',       gridTemplateAreas: '"a b"',               paneAreaNames: ['a', 'b'] },
+    { id: 'l2v',  panes: 2, label: '2 Vertical',    gridTemplateColumns: '1fr',       gridTemplateRows: '1fr 1fr',   gridTemplateAreas: '"a" "b"',             paneAreaNames: ['a', 'b'] },
+    { id: 'l3h',  panes: 3, label: '3 Columns',     gridTemplateColumns: '1fr 1fr 1fr', gridTemplateRows: '1fr',     gridTemplateAreas: '"a b c"',             paneAreaNames: ['a', 'b', 'c'] },
+    { id: 'l4',   panes: 4, label: '4 Grid',        gridTemplateColumns: '1fr 1fr',   gridTemplateRows: '1fr 1fr',   gridTemplateAreas: '"a b" "c d"',         paneAreaNames: ['a', 'b', 'c', 'd'] },
+    { id: 'l1r2', panes: 3, label: '1+2 Right',     gridTemplateColumns: '2fr 1fr',   gridTemplateRows: '1fr 1fr',   gridTemplateAreas: '"a b" "a c"',         paneAreaNames: ['a', 'b', 'c'] },
+    { id: 'l2b1', panes: 3, label: '2+1 Bottom',    gridTemplateColumns: '1fr 1fr',   gridTemplateRows: '1fr 1fr',   gridTemplateAreas: '"a b" "c c"',         paneAreaNames: ['a', 'b', 'c'] },
+    { id: 'l1l3', panes: 4, label: '1+3 Side',      gridTemplateColumns: '3fr 1fr',   gridTemplateRows: '1fr 1fr 1fr', gridTemplateAreas: '"a b" "a c" "a d"', paneAreaNames: ['a', 'b', 'c', 'd'] },
+];
+
+export interface PaneConfig {
+    symbol: string;
+    timeframe: number;
+    chartType: string;
+    enabledIndicators: IndicatorId[];
+}
+
 export interface BotConfig {
     spread?: number;
     size?: number;
@@ -282,6 +318,13 @@ interface MarketState {
     botStatus: Record<string, 'running' | 'stopped' | 'standby'>;
     botConfigs: Record<string, BotConfig>;
     
+    // Layout State
+    layoutId: string;
+    syncSettings: SyncSettings;
+    activePaneId: string;
+    paneConfigs: Record<string, PaneConfig>;
+    paneCandles: Record<string, Candle[]>; // Store candles per pane
+    
     // Notification State
     notifications: { id: string; message: string; type: 'success' | 'error' | 'info' }[];
     
@@ -292,7 +335,7 @@ interface MarketState {
     setUserId: (uid: string | null) => void;
     resetSymbolData: () => void;
     setCrosshairData: (data: CrosshairData | null) => void;
-    setCandlesData: (candles: Candle[], latestCandle?: Candle | null) => void;
+    setCandlesData: (candles: Candle[], latestCandle?: Candle | null, forSymbol?: string) => void;
     setLatestCandle: (candle: Candle) => void;
     clearCandles: () => void;
     setOrderBook: (bids: { price: number, qty: number }[], asks: { price: number, qty: number }[]) => void;
@@ -320,6 +363,11 @@ interface MarketState {
     updateCompareCandle: (symbol: string, candle: Candle) => void;
     setBotStatus: (botId: string, status: 'running' | 'stopped' | 'standby') => void;
     updateBotConfig: (botId: string, config: Partial<BotConfig>) => void;
+    setLayout: (layoutId: string) => void;
+    updateSyncSettings: (settings: Partial<SyncSettings>) => void;
+    setActivePaneId: (paneId: string) => void;
+    updatePaneConfig: (paneId: string, config: Partial<PaneConfig>) => void;
+    setPaneCandles: (paneId: string, candles: Candle[]) => void;
 
     // Alert Actions
     alerts: Alert[];
@@ -423,13 +471,30 @@ const useMarketStore = create<MarketState>((set) => ({
         }
     },
 
+    layoutId: 'l1',
+    syncSettings: {
+        symbol: true,
+        interval: true,
+        crosshair: true,
+        time: true,
+        dateRange: true,
+    },
+    activePaneId: 'a',
+    paneConfigs: {
+        'a': { symbol: 'AAPL', timeframe: 1, chartType: 'Candles', enabledIndicators: [] },
+        'b': { symbol: 'AAPL', timeframe: 1, chartType: 'Candles', enabledIndicators: [] },
+        'c': { symbol: 'AAPL', timeframe: 1, chartType: 'Candles', enabledIndicators: [] },
+        'd': { symbol: 'AAPL', timeframe: 1, chartType: 'Candles', enabledIndicators: [] },
+    },
+    paneCandles: {
+        'a': [],
+        'b': [],
+        'c': [],
+        'd': [],
+    },
+
     notifications: [],
 
-    setTimeframe: (seconds) => set({ timeframe: seconds }),
-    setCurrentSymbol: (symbol) => set({ currentSymbol: symbol }),
-    setSymbols: (symbols) => set({ symbols }),
-    setTickers: (tickers) => set({ tickers }),
-    setUserId: (uid) => set({ userId: uid }),
     resetSymbolData: () => set((state) => ({
         candles: [],
         latestCandle: null,
@@ -439,7 +504,31 @@ const useMarketStore = create<MarketState>((set) => ({
     })),
     setCrosshairData: (data) => set({ crosshairData: data }),
 
-    setCandlesData: (candles, latestCandle = null) => set((state) => {
+    setCurrentSymbol: (symbol) => set((state) => {
+        // In single-pane mode, update global symbol normally
+        if (state.layoutId === 'l1') {
+            return { currentSymbol: symbol };
+        }
+
+        // In multi-pane mode, update active pane's symbol without changing global currentSymbol
+        // This allows each pane to have independent data
+        const update: Partial<MarketState> = {};
+        if (state.activePaneId) {
+            update.paneConfigs = {
+                ...state.paneConfigs,
+                [state.activePaneId]: { 
+                    ...state.paneConfigs[state.activePaneId], 
+                    symbol 
+                }
+            };
+        }
+        return update;
+    }),
+    setSymbols: (symbols) => set({ symbols }),
+    setTickers: (tickers) => set({ tickers }),
+    setUserId: (uid) => set({ userId: uid }),
+
+    setCandlesData: (candles, latestCandle = null, forSymbol) => set((state) => {
         if (state.isReplayMode) return state; // Ignore live history updates during replay
 
         const source = candles || state.candles;
@@ -448,6 +537,19 @@ const useMarketStore = create<MarketState>((set) => ({
             ? { ...latestCandle, time: normalizeCandleTime(latestCandle.time) }
             : safeCandles[safeCandles.length - 1] || state.latestCandle;
 
+        // If forSymbol is provided and differs from current symbol, store in paneCandles instead
+        if (forSymbol && forSymbol !== state.currentSymbol) {
+            // Find panes matching this symbol and update their candles
+            const newPaneCandles = { ...state.paneCandles };
+            for (const [paneId, config] of Object.entries(state.paneConfigs)) {
+                if (config.symbol === forSymbol) {
+                    newPaneCandles[paneId] = safeCandles;
+                }
+            }
+            return { paneCandles: newPaneCandles };
+        }
+
+        // Default behavior: update global candles
         if (safeLatest) {
             const previousPrice = state.lastPrice || safeLatest.close;
             useMarketStore.getState().checkAlerts(state.currentSymbol, safeLatest.close, previousPrice);
@@ -629,22 +731,41 @@ const useMarketStore = create<MarketState>((set) => ({
         });
     },
 
-    toggleIndicator: (indicatorId) => set((state) => ({
-        enabledIndicators: state.enabledIndicators.includes(indicatorId)
+    toggleIndicator: (indicatorId) => set((state) => {
+        const newIndicators = state.enabledIndicators.includes(indicatorId)
             ? state.enabledIndicators.filter((id) => id !== indicatorId)
-            : [...state.enabledIndicators, indicatorId]
-    })),
+            : [...state.enabledIndicators, indicatorId];
+        
+        const update: Partial<MarketState> = { enabledIndicators: newIndicators };
+        // Also update active pane if in multi-pane mode
+        if (state.layoutId !== 'l1' && state.activePaneId) {
+            update.paneConfigs = {
+                ...state.paneConfigs,
+                [state.activePaneId]: { ...state.paneConfigs[state.activePaneId], enabledIndicators: newIndicators }
+            };
+        }
+        return update;
+    }),
 
-    setIndicatorEnabled: (indicatorId, enabled) => set((state) => ({
-        enabledIndicators: enabled
+    setIndicatorEnabled: (indicatorId, enabled) => set((state) => {
+        const newIndicators = enabled
             ? (state.enabledIndicators.includes(indicatorId)
                 ? state.enabledIndicators
                 : [...state.enabledIndicators, indicatorId])
-            : state.enabledIndicators.filter((id) => id !== indicatorId)
-    })),
+            : state.enabledIndicators.filter((id) => id !== indicatorId);
+        
+        const update: Partial<MarketState> = { enabledIndicators: newIndicators };
+        // Also update active pane if in multi-pane mode
+        if (state.layoutId !== 'l1' && state.activePaneId) {
+            update.paneConfigs = {
+                ...state.paneConfigs,
+                [state.activePaneId]: { ...state.paneConfigs[state.activePaneId], enabledIndicators: newIndicators }
+            };
+        }
+        return update;
+    }),
 
     clearIndicators: () => set({ enabledIndicators: [] }),
-    setChartType: (type) => set({ chartType: type }),
     addToWatchlist: (symbol) => set((state) => ({
         watchlist: state.watchlist.includes(symbol) ? state.watchlist : [...state.watchlist, symbol]
     })),
@@ -745,6 +866,58 @@ const useMarketStore = create<MarketState>((set) => ({
             [botId]: { ...state.botConfigs[botId], ...config }
         }
     })),
+
+    setLayout: (newLayoutId) => set({ layoutId: newLayoutId }),
+    updateSyncSettings: (settings) => set((state) => ({
+        syncSettings: { ...state.syncSettings, ...settings }
+    })),
+    setActivePaneId: (paneId) => set((state) => {
+        // When switching panes, load that pane's config into the global state
+        const targetPane = state.paneConfigs[paneId];
+        if (!targetPane) return { activePaneId: paneId };
+        
+        return {
+            activePaneId: paneId,
+            currentSymbol: targetPane.symbol,
+            timeframe: targetPane.timeframe,
+            chartType: targetPane.chartType,
+            enabledIndicators: targetPane.enabledIndicators,
+        };
+    }),
+    updatePaneConfig: (paneId, config) => set((state) => ({
+        paneConfigs: {
+            ...state.paneConfigs,
+            [paneId]: { ...state.paneConfigs[paneId], ...config }
+        }
+    })),
+    setPaneCandles: (paneId, candles) => set((state) => ({
+        paneCandles: {
+            ...state.paneCandles,
+            [paneId]: candles
+        }
+    })),
+    setTimeframe: (seconds) => set((state) => {
+        const update: Partial<MarketState> = { timeframe: seconds };
+        // Also update active pane if in multi-pane mode
+        if (state.layoutId !== 'l1' && state.activePaneId) {
+            update.paneConfigs = {
+                ...state.paneConfigs,
+                [state.activePaneId]: { ...state.paneConfigs[state.activePaneId], timeframe: seconds }
+            };
+        }
+        return update;
+    }),
+    setChartType: (type) => set((state) => {
+        const update: Partial<MarketState> = { chartType: type };
+        // Also update active pane if in multi-pane mode
+        if (state.layoutId !== 'l1' && state.activePaneId) {
+            update.paneConfigs = {
+                ...state.paneConfigs,
+                [state.activePaneId]: { ...state.paneConfigs[state.activePaneId], chartType: type }
+            };
+        }
+        return update;
+    }),
 
     // Replay implementaton
     startReplay: (startIndex, allCandles) => set((state) => {

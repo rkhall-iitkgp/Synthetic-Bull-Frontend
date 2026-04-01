@@ -379,7 +379,7 @@ function CompareOverlay() {
                     <div key={sym} className="flex items-center gap-2 group pointer-events-auto" style={{ color: compareColors[idx % compareColors.length] }}>
                         <span>{sym}</span>
                         <span className="opacity-80 font-mono">{lastPrice}</span>
-                        <button 
+                        <button
                             className="opacity-0 group-hover:opacity-100 transition-opacity text-text-muted hover:text-text-primary ml-1"
                             onClick={(e) => { e.stopPropagation(); removeCompareSymbol(sym); }}
                         >
@@ -1563,8 +1563,8 @@ function Chart() {
                     <div
                         ref={chartContainerRef}
                         className={`chart-canvas ${screenshotFlash ? 'animate-flash' : ''} ${activeTool === 'arrow' ? 'cursor-arrow' :
-                                activeTool === 'dot' ? 'cursor-dot' :
-                                    activeTool === 'crosshair' ? 'cursor-cross' : ''
+                            activeTool === 'dot' ? 'cursor-dot' :
+                                activeTool === 'crosshair' ? 'cursor-cross' : ''
                             }`}
                     />
 
