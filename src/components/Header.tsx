@@ -348,7 +348,7 @@ export default function Header() {
                                                 </button>
                                             </div>
 
-                                            <div className="tv-indicators-list styling-scrollbar">
+                                            <div className="tv-indicators-list">
                                                 {Object.entries(groupedWorkingIndicators).map(([category, indicators]) => (
                                                     <div key={category}>
                                                         <div className="tv-indicator-category-header">{category}</div>
@@ -410,9 +410,46 @@ export default function Header() {
                                     ) : (
                                         <div className="tv-indicators-empty-state">
                                             <div className="tv-indicators-empty-logo" />
-                                            <h4>No personal scripts, yet</h4>
-                                            <p>Start creating your own indicators and strategies with Pine Script®, or remix an existing one to make it yours.</p>
-                                            <button type="button" className="tv-indicators-empty-button">Create script</button>
+                                            <h4>
+                                                {activeIndicatorSection === 'My scripts' && 'No personal scripts, yet'}
+                                                {activeIndicatorSection === 'Invite-only' && 'No invite-only scripts'}
+                                                {activeIndicatorSection === 'Purchased' && 'No purchased scripts'}
+                                                {activeIndicatorSection === "Editors' picks" && "No Editors' picks available"}
+                                                {activeIndicatorSection === 'Top' && 'No top scripts available'}
+                                                {activeIndicatorSection === 'Trending' && 'No trending scripts'}
+                                                {activeIndicatorSection === 'Store' && 'Browse Indicators'}
+                                                {activeIndicatorSection === 'Fundamentals' && 'Fundamentals'}
+                                            </h4>
+                                            <p>
+                                                {activeIndicatorSection === 'My scripts' && 'Start creating your own indicators and strategies with Pine Script®, or remix an existing one to make it yours.'}
+                                                {activeIndicatorSection === 'Invite-only' && 'You don\'t have any invite-only scripts available yet.'}
+                                                {activeIndicatorSection === 'Purchased' && 'You haven\'t purchased any scripts yet. Visit the Store to find more indicators.'}
+                                                {activeIndicatorSection === "Editors' picks" && 'Discover handpicked indicators by our editors.'}
+                                                {activeIndicatorSection === 'Top' && 'View the most popular indicators.'}
+                                                {activeIndicatorSection === 'Trending' && 'Check out the trending indicators in the community.'}
+                                                {activeIndicatorSection === 'Store' && 'Explore and buy indicators from the TradingView Store.'}
+                                                {activeIndicatorSection === 'Fundamentals' && 'View fundamental analysis indicators.'}
+                                            </p>
+                                            <button 
+                                                type="button" 
+                                                className="tv-indicators-empty-button"
+                                                onClick={() => {
+                                                    if (activeIndicatorSection === 'My scripts' || activeIndicatorSection === 'Invite-only' || activeIndicatorSection === 'Purchased') {
+                                                        // Script creation action
+                                                    } else if (activeIndicatorSection === 'Store') {
+                                                        window.open('https://www.tradingview.com/scripts/', '_blank');
+                                                    }
+                                                }}
+                                            >
+                                                {activeIndicatorSection === 'My scripts' && 'Create script'}
+                                                {activeIndicatorSection === 'Invite-only' && 'View Community'}
+                                                {activeIndicatorSection === 'Purchased' && 'Go to Store'}
+                                                {activeIndicatorSection === "Editors' picks" && 'Browse Scripts'}
+                                                {activeIndicatorSection === 'Top' && 'Browse Scripts'}
+                                                {activeIndicatorSection === 'Trending' && 'Browse Scripts'}
+                                                {activeIndicatorSection === 'Store' && 'Go to Store'}
+                                                {activeIndicatorSection === 'Fundamentals' && 'Explore'}
+                                            </button>
                                         </div>
                                     )}
                                 </section>

@@ -34,8 +34,8 @@
 
 @layer utilities {
   .styling-scrollbar::-webkit-scrollbar {
-    width: 5px;
-    height: 5px;
+    width: 0px;
+    height: 0px;
   }
 
   .styling-scrollbar::-webkit-scrollbar-track {
@@ -350,20 +350,22 @@
   border-right: 1px solid #2a2e39;
   background: #131722;
   padding: 14px 12px 16px;
-  overflow-y: auto;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .tv-indicators-sidebar-group {
-  margin-bottom: 14px;
+  margin-bottom: 8px;
 }
 
 .tv-indicators-sidebar-title {
   color: #4c525e;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  margin: 0 8px 6px;
+  margin: 0 8px 4px;
 }
 
 .tv-indicators-sidebar-item {
@@ -373,15 +375,18 @@
   color: #d1d4dc;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 11px 12px;
-  border-radius: 10px;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 8px;
   text-align: left;
-  font-size: 16px;
-  line-height: 1.1;
+  font-size: 14px;
+  line-height: 1.15;
   font-weight: 600;
   cursor: pointer;
-  margin-bottom: 2px;
+  margin-bottom: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .tv-indicators-sidebar-item:hover {
@@ -457,7 +462,23 @@
 .tv-indicators-list {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 2px 16px 16px 18px;
+  display: flex;
+  flex-direction: column;
+  scrollbar-width: none;
+}
+
+.tv-indicators-list::-webkit-scrollbar {
+  width: 0px;
+}
+
+.tv-indicators-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.tv-indicators-list::-webkit-scrollbar-thumb {
+  background: transparent;
 }
 
 .tv-indicators-empty-state {
@@ -537,7 +558,7 @@
 .tv-indicator-item-label {
   display: block;
   color: #d1d4dc;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
   line-height: 1.15;
 }
