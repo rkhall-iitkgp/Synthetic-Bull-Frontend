@@ -9,12 +9,72 @@ export interface Ticker {
     category: string;
 }
 
+// Strategy Types
+export interface BotStrategy {
+    id: string;
+    name: string;
+    strategy_type: 'alpha' | 'market_maker' | 'custom';
+    config: Record<string, unknown>;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface BotStrategyCreate {
+    name: string;
+    strategy_type: 'alpha' | 'market_maker' | 'custom';
+    config: Record<string, unknown>;
+}
+
+// Bot Types
 export interface Bot {
     id: string;
     name: string;
     api_key: string;
     status: string;
+    strategy_id?: string;
     created_at: string;
+    updated_at?: string;
+}
+
+export interface BotWithStrategy extends Bot {
+    strategy?: BotStrategy;
+}
+
+export interface BotCreate {
+    name: string;
+    strategy_type: 'alpha' | 'market_maker' | 'custom';
+    strategy_config: Record<string, unknown>;
+}
+
+// KPI Types
+export interface BotKPI {
+    id: string;
+    bot_id: string;
+    total_trades: number;
+    winning_trades: number;
+    losing_trades: number;
+    total_pnl: number;
+    realized_pnl: number;
+    unrealized_pnl: number;
+    win_rate: number;
+    max_drawdown: number;
+    sharpe_ratio: number;
+    strategy_metrics?: Record<string, unknown>;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface BotKPIUpdate {
+    total_trades: number;
+    winning_trades: number;
+    losing_trades: number;
+    total_pnl: number;
+    realized_pnl?: number;
+    unrealized_pnl?: number;
+    win_rate: number;
+    max_drawdown: number;
+    sharpe_ratio: number;
+    strategy_metrics?: Record<string, unknown>;
 }
 
 export async function fetchTickers(): Promise<Ticker[]> {
@@ -29,11 +89,17 @@ export async function fetchBots(): Promise<Bot[]> {
     return await res.json();
 }
 
-export async function createBot(name: string): Promise<Bot> {
+export async function fetchBot(botId: string): Promise<BotWithStrategy> {
+    const res = await fetch(`${API_BASE}/api/bots/${botId}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+}
+
+export async function createBot(botData: BotCreate): Promise<Bot> {
     const res = await fetch(`${API_BASE}/api/bots`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name })
+        body: JSON.stringify(botData)
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.json();
@@ -106,6 +172,52 @@ export interface BotPnLData {
 export async function fetchBotPnL(botId: string, period: string = '1d'): Promise<BotPnLData> {
     const res = await fetch(`${API_BASE}/api/bots/${botId}/pnl?period=${period}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+}
+
+// Strategy Endpoints
+export async function createStrategy(strategy: BotStrategyCreate): Promise<BotStrategy> {
+    const res = await fetch(`${API_BASE}/api/strategies`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(strategy)
+    });
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || `HTTP ${res.status}`);
+    }
+    return await res.json();
+}
+
+export async function fetchStrategies(skip: number = 0, limit: number = 100): Promise<BotStrategy[]> {
+    const res = await fetch(`${API_BASE}/api/strategies?skip=${skip}&limit=${limit}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+}
+
+export async function fetchStrategy(strategyId: string): Promise<BotStrategy> {
+    const res = await fetch(`${API_BASE}/api/strategies/${strategyId}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+}
+
+// KPI Endpoints
+export async function fetchBotKPI(botId: string): Promise<BotKPI> {
+    const res = await fetch(`${API_BASE}/api/bots/${botId}/kpi`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+}
+
+export async function updateBotKPI(botId: string, kpiData: BotKPIUpdate): Promise<{ status: string; kpi_id: string }> {
+    const res = await fetch(`${API_BASE}/api/bots/${botId}/kpi/update`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(kpiData)
+    });
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || `HTTP ${res.status}`);
+    }
     return await res.json();
 }
 

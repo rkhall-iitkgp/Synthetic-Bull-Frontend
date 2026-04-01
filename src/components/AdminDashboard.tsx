@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Navbar } from './Navbar';
-import { fetchBots, createBot, type Bot } from '../services/api';
+import { fetchBots, createBot, type Bot, type BotCreate } from '../services/api';
 import { Check, Copy, Plus, Server, ShieldAlert, Cpu } from 'lucide-react'; 
 import { Link } from 'react-router-dom';
 
 export default function AdminDashboard() {
   const [bots, setBots] = useState<Bot[]>([]);
   const [newBotName, setNewBotName] = useState('');
+  const [strategyType, setStrategyType] = useState<'alpha' | 'market_maker' | 'custom'>('alpha');
   const [creating, setCreating] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [error, setError] = useState('');
@@ -32,7 +33,35 @@ export default function AdminDashboard() {
     setCreating(true);
     setError('');
     try {
-      const bot = await createBot(newBotName);
+      // Default strategy configuration for each strategy type
+      const defaultConfigs: Record<string, Record<string, unknown>> = {
+        alpha: {
+          symbol: 'BTC/USD',
+          hurst_window: 100,
+          hurst_trending: 0.55,
+          hurst_mr: 0.45,
+          stop_pct: 0.02,
+          tp_pct: 0.05,
+          max_position_pct: 0.20,
+        },
+        market_maker: {
+          symbol: 'BTC/USD',
+          spread_bps: 25,
+          max_inventory: 0.5,
+          order_size: 0.1,
+        },
+        custom: {
+          symbol: 'BTC/USD',
+        },
+      };
+
+      const botData: BotCreate = {
+        name: newBotName,
+        strategy_type: strategyType,
+        strategy_config: defaultConfigs[strategyType],
+      };
+
+      const bot = await createBot(botData);
       setBots([bot, ...bots]);
       setNewBotName('');
     } catch (err) {
@@ -73,24 +102,36 @@ export default function AdminDashboard() {
               <Cpu size={20} className="text-text-secondary" />
               Provision New Bot
             </h2>
-            <form onSubmit={handleCreateBot} className="flex gap-3">
-              <input 
-                type="text" 
-                value={newBotName}
-                onChange={e => setNewBotName(e.target.value)}
-                placeholder="Enter bot name (e.g., Alpha-01)"
-                className="flex-1 bg-bg-primary border border-border-subtle rounded px-4 py-2 text-sm text-text-primary focus:outline-none focus:border-accent/40 placeholder:text-text-muted transition-colors"
-                disabled={creating}
-                autoComplete="off"
-              />
-              <button 
-                type="submit" 
-                disabled={creating || !newBotName.trim()}
-                className="dash-btn px-5 py-2 font-semibold text-sm rounded flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Plus size={16} />
-                {creating ? 'Provisioning...' : 'Generate API Key'}
-              </button>
+            <form onSubmit={handleCreateBot} className="flex flex-col gap-4">
+              <div className="flex gap-3">
+                <input 
+                  type="text" 
+                  value={newBotName}
+                  onChange={e => setNewBotName(e.target.value)}
+                  placeholder="Enter bot name (e.g., Alpha-01)"
+                  className="flex-1 bg-bg-primary border border-border-subtle rounded px-4 py-2 text-sm text-text-primary focus:outline-none focus:border-accent/40 placeholder:text-text-muted transition-colors"
+                  disabled={creating}
+                  autoComplete="off"
+                />
+                <select
+                  value={strategyType}
+                  onChange={e => setStrategyType(e.target.value as 'alpha' | 'market_maker' | 'custom')}
+                  disabled={creating}
+                  className="bg-bg-primary border border-border-subtle rounded px-4 py-2 text-sm text-text-primary focus:outline-none focus:border-accent/40 transition-colors"
+                >
+                  <option value="alpha">Alpha Strategy</option>
+                  <option value="market_maker">Market Maker</option>
+                  <option value="custom">Custom</option>
+                </select>
+                <button 
+                  type="submit" 
+                  disabled={creating || !newBotName.trim()}
+                  className="dash-btn px-5 py-2 font-semibold text-sm rounded flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Plus size={16} />
+                  {creating ? 'Provisioning...' : 'Generate API Key'}
+                </button>
+              </div>
             </form>
           </div>
 
