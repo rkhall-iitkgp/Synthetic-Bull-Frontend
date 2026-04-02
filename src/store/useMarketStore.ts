@@ -339,7 +339,7 @@ interface MarketState {
     setCrosshairData: (data: CrosshairData | null) => void;
     setCandlesData: (candles: Candle[], latestCandle?: Candle | null, forSymbol?: string, forTimeframe?: number) => void;
     setLatestCandle: (candle: Candle, forSymbol?: string, forTimeframe?: number) => void;
-    clearCandles: () => void;
+    clearCandles: (paneId?: string) => void;
     setOrderBook: (bids: { price: number, qty: number }[], asks: { price: number, qty: number }[]) => void;
     addTrade: (trade: Trade) => void;
     setWsConnected: (connected: boolean) => void;
@@ -477,11 +477,11 @@ const useMarketStore = create<MarketState>((set) => ({
 
     layoutId: 'l1',
     syncSettings: {
-        symbol: true,
-        interval: true,
-        crosshair: true,
-        time: true,
-        dateRange: true,
+        symbol: false,
+        interval: false,
+        crosshair: false,
+        time: false,
+        dateRange: false,
     },
     activePaneId: 'a',
     paneConfigs: {
@@ -636,12 +636,22 @@ const useMarketStore = create<MarketState>((set) => ({
         return update;
     }),
 
-    clearCandles: () => set((state) => ({
-        candles: [],
-        latestCandle: null,
-        paneCandles: {},
-        historySequence: state.historySequence + 1
-    })),
+    clearCandles: (paneId?: string) => set((state) => {
+        // Multi-pane: only clear the specified pane
+        if (paneId && state.layoutId !== 'l1') {
+            return {
+                paneCandles: { ...state.paneCandles, [paneId]: [] },
+                paneHistorySequence: { ...state.paneHistorySequence, [paneId]: (state.paneHistorySequence[paneId] || 0) + 1 },
+            };
+        }
+        // Single-pane or full reset: clear everything
+        return {
+            candles: [],
+            latestCandle: null,
+            paneCandles: {},
+            historySequence: state.historySequence + 1,
+        };
+    }),
 
     setOrderBook: (bids, asks) => set({ orderBook: { bids, asks } }),
 

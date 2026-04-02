@@ -212,7 +212,8 @@ export function TickerSearch() {
             closeSearch();
             if (symbol === currentSymbol) return;
             setCurrentSymbol(symbol);
-            useMarketStore.getState().clearCandles();
+            const _st = useMarketStore.getState();
+            _st.clearCandles(_st.layoutId !== 'l1' ? _st.activePaneId : undefined);
             if (!isSymbolCached(symbol)) {
                 requestHistory(symbol);
             }
@@ -897,7 +898,7 @@ function Chart({ paneId }: { paneId?: string }) {
                 if (!nextSymbol || nextSymbol === state.currentSymbol) return;
 
                 state.setCurrentSymbol(nextSymbol);
-                state.clearCandles();
+                state.clearCandles(paneId);
                 if (!isSymbolCached(nextSymbol)) {
                     requestHistory(nextSymbol);
                 }
