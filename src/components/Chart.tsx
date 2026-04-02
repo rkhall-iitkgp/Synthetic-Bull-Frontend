@@ -804,6 +804,15 @@ function Chart({ paneId }: { paneId?: string } = {}) {
   // Initialize chart
   useEffect(() => {
     if (!chartContainerRef.current) return;
+    
+    // Ensure container has valid dimensions before initializing chart
+    const width = chartContainerRef.current.clientWidth;
+    const height = chartContainerRef.current.clientHeight;
+    if (width <= 0 || height <= 0) {
+      // Container not ready yet, chart will initialize when ResizeObserver fires
+      return;
+    }
+    
     const p = theme === "dark" ? DARK_CHART : LIGHT_CHART;
 
     const chart = createChart(chartContainerRef.current, {
@@ -982,11 +991,14 @@ function Chart({ paneId }: { paneId?: string } = {}) {
     }
 
     const handleResize = () => {
-      if (chartContainerRef.current) {
-        chart.applyOptions({
-          width: chartContainerRef.current.clientWidth,
-          height: chartContainerRef.current.clientHeight,
-        });
+      if (chartContainerRef.current && chartRef.current) {
+        const width = chartContainerRef.current.clientWidth;
+        const height = chartContainerRef.current.clientHeight;
+        
+        // Only update if dimensions are valid and have changed
+        if (width > 0 && height > 0) {
+          chart.applyOptions({ width, height });
+        }
       }
     };
 
@@ -2413,6 +2425,12 @@ function Chart({ paneId }: { paneId?: string } = {}) {
                     ? "cursor-cross"
                     : ""
             }`}
+            style={{
+              width: '100%',
+              height: '100%',
+              display: 'block',
+              position: 'relative',
+            }}
           />
 
           {alertModalOpen && (

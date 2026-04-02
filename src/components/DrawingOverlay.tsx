@@ -98,9 +98,15 @@ export function DrawingOverlay({ chartRef, seriesRef, hideDrawings = false, pane
 
         let frameId: number | null = null;
         let lastSignature = '';
+        let lastUpdateTime = 0;
+        const UPDATE_THROTTLE_MS = 150; // Throttle updates to prevent infinite loops
 
         const forceRerender = () => {
-            setTrigger((t) => t + 1);
+            const now = Date.now();
+            if (now - lastUpdateTime >= UPDATE_THROTTLE_MS) {
+                lastUpdateTime = now;
+                setTrigger((t) => t + 1);
+            }
         };
 
         const getSignature = () => {

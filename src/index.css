@@ -124,7 +124,7 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 
 .tv-header {
-  @apply relative z-50 flex items-center justify-between h-[42px] min-h-[42px] px-1 bg-black/50 backdrop-blur-md border-b border-white/5 select-none;
+  @apply relative z-50 flex items-center justify-between h-[42px] min-h-[42px] px-1 bg-black/50 backdrop-blur-md border-b border-white/5 select-none flex-shrink-0;
 }
 
 .tv-header-left {
@@ -1558,9 +1558,14 @@
 .chart-root {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  flex: 1;
   width: 100%;
+  height: auto;
   background: #0a0e17;
+  margin: 0;
+  padding: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 /* ─── Chart Body (Toolbar + Canvas) ───────────────────────────────────────── */
@@ -1568,7 +1573,11 @@
   flex: 1;
   display: flex;
   min-height: 0;
+  min-width: 0;
   position: relative;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
 }
 
 /* ─── Left Toolbar ────────────────────────────────────────────────────────── */
@@ -1578,12 +1587,16 @@
   align-items: center;
   width: 48px;
   min-width: 48px;
+  max-width: 48px;
+  height: 100%;
   padding: 8px 0;
   gap: 4px;
   background: #000000;
   border-right: 1px solid #222222;
-  /* Removed overflow-y: auto to prevent clipping of absolute menus */
   overflow: visible;
+  margin: 0;
+  flex-shrink: 0;
+  flex-grow: 0;
 }
 
 /* Hide native number input spinners (we use custom +/- buttons instead) */
@@ -1723,11 +1736,23 @@ input[type='number'] {
   position: relative;
   min-width: 0;
   min-height: 0;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  overflow: hidden;
 }
 
 .chart-canvas {
+  flex: 1;
   width: 100%;
-  height: 100%;
+  margin: 0;
+  padding: 0;
+  display: block;
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
 }
 
 /* ─── OHLCV Overlay ───────────────────────────────────────────────────────── */
@@ -5755,4 +5780,776 @@ input[type='number'] {
 
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: oklch(0.55 0.25 275 / 50%);
+}
+
+/* ═════════════════════════════════════════════════════════════════════════
+   MOBILE RESPONSIVE UTILITIES (Mobile-First Approach)
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* ── Landing Page Mobile ────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .landing-page {
+    overflow-x: hidden;
+  }
+
+  .landing-nav {
+    position: fixed !important;
+    height: auto;
+    z-index: 50;
+  }
+
+  .landing-nav-inner {
+    padding: 1rem 1.25rem !important;
+    height: auto !important;
+    gap: 0.5rem !important;
+  }
+
+  .landing-brand {
+    font-size: 1rem !important;
+  }
+
+  .landing-marquee {
+    height: 2.5rem !important;
+    font-size: 0.7rem;
+    top: 3.5rem !important;
+  }
+
+  .landing-marquee-item {
+    padding: 0 1rem !important;
+    gap: 0.5rem !important;
+  }
+
+  .landing-main {
+    padding-top: 10rem !important;
+    padding-bottom: 4rem !important;
+  }
+
+  .landing-hero {
+    margin-bottom: 2rem !important;
+  }
+
+  .landing-hero-title {
+    font-size: 2rem !important;
+    line-height: 1.1 !important;
+    margin-bottom: 1rem !important;
+  }
+
+  .landing-hero-subtitle {
+    font-size: 1rem !important;
+    margin-bottom: 1.5rem !important;
+  }
+
+  .landing-hero button,
+  .landing-hero a {
+    width: 100% !important;
+    padding: 0.75rem 1.5rem !important;
+  }
+
+  .landing-analysis-head {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+  }
+
+  .landing-analysis-head h2 {
+    font-size: 1.75rem !important;
+    margin-bottom: 0.5rem !important;
+  }
+
+  .landing-analysis {
+    margin-bottom: 2rem !important;
+  }
+
+  .landing-speed {
+    padding: 4rem 1.5rem !important;
+    margin-bottom: 2rem !important;
+  }
+
+  .landing-speed h2 {
+    font-size: 2rem !important;
+    line-height: 1.2 !important;
+  }
+
+  .landing-capabilities-heading {
+    font-size: 1.5rem !important;
+  }
+
+  .landing-cap-card {
+    padding: 1.5rem !important;
+  }
+
+  .landing-audience h2 {
+    font-size: 2rem !important;
+    margin-bottom: 2rem !important;
+  }
+
+  .landing-audience-card {
+    padding: 1.5rem !important;
+  }
+
+  .landing-audience-card h3 {
+    font-size: 1.25rem !important;
+  }
+
+  .landing-audience-card ul li {
+    gap: 0.75rem !important;
+  }
+
+  .landing-footer {
+    padding-top: 2rem !important;
+    padding-bottom: 1rem !important;
+  }
+
+  .landing-footer .grid {
+    gap: 2rem !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .landing-page {
+    width: 100%;
+    max-width: 100vw;
+  }
+
+  .landing-nav-inner {
+    padding: 0.75rem !important;
+  }
+
+  .landing-brand span {
+    display: none;
+  }
+
+  .landing-marquee {
+    height: 2rem !important;
+    gap: 0.5rem !important;
+  }
+
+  .landing-marquee-item {
+    padding: 0 0.5rem !important;
+    font-size: 0.65rem !important;
+  }
+
+  .landing-main {
+    padding-top: 8rem !important;
+    padding-bottom: 2rem !important;
+  }
+
+  .landing-hero-title {
+    font-size: 1.5rem !important;
+    margin-bottom: 0.75rem !important;
+  }
+
+  .landing-hero-subtitle {
+    font-size: 0.9rem !important;
+  }
+
+  .landing-hero button,
+  .landing-hero a {
+    font-size: 0.9rem !important;
+    min-height: 44px !important;
+  }
+
+  .landing-analysis-card {
+    padding: 1rem !important;
+  }
+
+  .landing-analysis-title {
+    font-size: 1rem !important;
+  }
+
+  .landing-analysis-desc {
+    font-size: 0.8rem !important;
+  }
+
+  .landing-cap-card {
+    padding: 1rem !important;
+  }
+
+  .landing-cap-card h3 {
+    font-size: 1rem !important;
+  }
+
+  .landing-cap-card p {
+    font-size: 0.75rem !important;
+  }
+
+  .landing-footer .grid {
+    grid-template-columns: 1fr !important;
+    gap: 1rem !important;
+  }
+}
+
+/* ── Terminal Mobile ────────────────────────────────────────────────────── */
+@media (max-width: 1024px) {
+  .h-screen {
+    height: auto;
+  }
+
+  .tv-header {
+    flex-wrap: wrap;
+    height: auto;
+    padding: 0.5rem 0.5rem;
+  }
+
+  .tv-header-left,
+  .tv-header-right {
+    gap: 0.25rem;
+  }
+
+  .tv-header-btn {
+    height: 28px !important;
+    padding: 0 0.5rem !important;
+    font-size: 11px !important;
+  }
+
+  .tv-header-separator {
+    display: none;
+  }
+}
+
+@media (max-width: 768px) {
+  /* Container layout */
+  .h-screen {
+    height: 100vh;
+  }
+
+  .h-screen.w-screen.flex.flex-col {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    height: 100vh;
+  }
+
+  /* Hide desktop header - but not the one in mobile-header-bottom */
+  .h-screen > .tv-header {
+    display: none !important;
+  }
+
+  /* Hide desktop elements */
+  .w-14.bg-bg-terminal.border-l {
+    display: none !important;
+  }
+
+  /* Mobile hamburger bar styles */
+  .mobile-hamburger-bar {
+    height: 48px;
+    min-height: 48px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    width: 100%;
+    background: #1a1d28;
+    border-bottom: 1px solid #222222;
+    z-index: 20;
+  }
+
+  .mobile-hamburger-bar button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.5rem;
+    border-radius: 0.5rem;
+    transition: background-color 0.2s;
+  }
+
+  .mobile-hamburger-bar button:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+  }
+
+  /* Main content should fill remaining space */
+  .h-screen > .flex-1,
+  .flex-1.flex.min-h-0,
+  .flex-1.flex.min-h-0.relative {
+    flex: 1 !important;
+    display: flex !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+  }
+
+  /* Chart toolbar - left side */
+  .tv-side-icon-btn {
+    width: 2.5rem !important;
+    height: 3.5rem !important;
+    gap: 0.125rem !important;
+  }
+
+  .tv-side-icon-btn svg {
+    width: 18px !important;
+    height: 18px !important;
+  }
+
+  /* Bottom sheet positioning */
+  .mobile-bottom-sheet {
+    max-height: 85vh;
+  }
+
+  /* Remove hamburger fixed positioning */
+  .mobile-bottom-hamburger {
+    display: none !important;
+  }
+
+  .tv-header-btn {
+    height: 32px !important;
+    padding: 0 0.5rem !important;
+    font-size: 12px !important;
+  }
+
+  .tv-header-btn span {
+    display: none !important;
+  }
+
+  .tv-indicators-modal {
+    width: 95vw !important;
+    height: 80vh !important;
+    max-height: 600px !important;
+  }
+
+  .tv-indicators-sidebar {
+    width: 150px !important;
+    padding: 0.75rem !important;
+  }
+
+  .tv-indicators-sidebar-item {
+    padding: 0.75rem !important;
+    font-size: 12px !important;
+  }
+
+  /* Mobile bottom header styles */
+  .mobile-header-bottom {
+    height: auto;
+    min-height: 50px;
+    max-height: 70px;
+  }
+
+  .mobile-header-bottom .tv-header {
+    flex-direction: row;
+    height: auto;
+    padding: 0.5rem 0.75rem;
+    gap: 0.5rem;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .mobile-header-bottom .tv-header::-webkit-scrollbar {
+    display: none;
+  }
+
+  .mobile-header-bottom .tv-header-left {
+    flex-direction: row;
+    gap: 0.5rem;
+    flex-shrink: 0;
+  }
+
+  .mobile-header-bottom .tv-header-center {
+    flex-direction: row;
+    gap: 0.25rem;
+    min-width: max-content;
+    flex-shrink: 0;
+  }
+
+  .mobile-header-bottom .tv-header-right {
+    flex-direction: row;
+    gap: 0.5rem;
+    flex-shrink: 0;
+    margin-left: auto;
+  }
+
+  .mobile-header-bottom .tv-header-btn {
+    height: 36px !important;
+    padding: 0 0.6rem !important;
+    font-size: 12px !important;
+    white-space: nowrap;
+  }
+
+  .mobile-header-bottom .tv-header-btn span {
+    display: inline !important;
+  }
+
+  .mobile-header-bottom .tv-price-strip {
+    gap: 0.5rem;
+    padding: 0;
+  }
+
+  .mobile-header-bottom .tv-price-value {
+    font-size: 13px;
+  }
+
+  .mobile-header-bottom .tv-price-change {
+    font-size: 11px;
+  }
+
+  .mobile-header-bottom .tv-indicators-wrap {
+    min-width: max-content;
+    flex-shrink: 0;
+  }
+
+  .mobile-header-bottom .tv-indicators-count {
+    min-width: 18px;
+    height: 18px;
+    font-size: 10px;
+  }
+
+  .mobile-header-bottom .tv-indicators-modal {
+    position: fixed !important;
+    top: auto !important;
+    bottom: 100% !important;
+    left: 0 !important;
+    right: 0 !important;
+    width: 100% !important;
+    max-width: 100vw !important;
+    height: min(70vh, 500px) !important;
+    border-radius: 16px 16px 0 0 !important;
+    margin-bottom: 10px;
+  }
+
+  /* Mobile Right Side - Constrain width to viewport */
+  .overflow-hidden.transition-\[width\].duration-300.ease-in-out.border-l {
+    max-width: calc(100vw - 48px) !important;
+  }
+
+  /* Mobile components bottom alignment */
+  .mobile-bottom-sheet {
+    max-height: calc(100vh - 48px - 50px - 10px) !important;
+  }
+
+  /* Ensure chart content stays within bounds */
+  .flex-1.flex.flex-col.min-w-0.min-h-0.overflow-hidden {
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow-x: hidden !important;
+  }
+
+  /* Grid container constraints */
+  .flex-1.min-h-0.min-w-0.overflow-hidden {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* Chart pane containers */
+  .bg-bg-terminal.cursor-pointer.transition-all {
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
+  }
+
+  /* OHLCV overlay positioning */
+  .ohlcv-overlay {
+    max-width: calc(100% - 80px) !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .tv-header {
+    flex-direction: column;
+    gap: 0;
+    padding: 0.5rem;
+  }
+
+  .tv-header-btn {
+    flex: 1;
+    height: 32px !important;
+    font-size: 11px !important;
+  }
+
+  .tv-indicators-modal {
+    width: 100vw !important;
+    height: 90vh !important;
+    left: 0 !important;
+    top: 0 !important;
+    border-radius: 0 !important;
+  }
+
+  .tv-indicators-sidebar {
+    width: 100px !important;
+    min-width: 100px !important;
+  }
+
+  .tv-indicators-modal-layout {
+    flex-direction: column;
+  }
+}
+
+/* ── Dashboard Mobile ─────────────────────────────────────────────────── */
+@media (max-width: 1024px) {
+  .dash-card {
+    padding: 1.25rem !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .dash-card {
+    padding: 1rem !important;
+  }
+
+  .dash-card .text-2xl {
+    font-size: 1.5rem !important;
+  }
+
+  .dash-card .text-xs {
+    font-size: 0.7rem !important;
+  }
+
+  .dash-grid {
+    gap: 0.75rem !important;
+  }
+
+  .market-data-table {
+    font-size: 0.85rem !important;
+  }
+
+  .market-data-row {
+    padding: 0.75rem !important;
+  }
+
+  .navbar {
+    padding: 0.75rem 0.5rem !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .dash-card {
+    padding: 0.75rem !important;
+  }
+
+  .dash-card .text-2xl {
+    font-size: 1.25rem !important;
+  }
+
+  .dash-icon-bg {
+    width: 28px !important;
+    height: 28px !important;
+  }
+
+  .dash-icon-bg svg {
+    width: 12px !important;
+    height: 12px !important;
+  }
+
+  .market-data-table {
+    font-size: 0.75rem !important;
+  }
+
+  .market-data-header {
+    display: none !important;
+  }
+
+  .market-data-row {
+    display: grid !important;
+    grid-template-columns: 1fr;
+    padding: 0.5rem !important;
+    gap: 0.25rem !important;
+  }
+
+  .market-data-cell {
+    display: flex !important;
+    justify-content: space-between !important;
+  }
+
+  .market-data-cell::before {
+    content: attr(data-label);
+    font-weight: 600;
+    margin-right: 0.5rem;
+  }
+}
+
+/* ── General Mobile Touch Improvements ──────────────────────────────────── */
+@media (hover: none) and (pointer: coarse) {
+  /* Touch device optimizations */
+  button,
+  a,
+  [role="button"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .tv-header-btn,
+  .tv-dropdown-option,
+  .tv-indicators-sidebar-item {
+    min-height: 40px !important;
+    padding: 0.5rem 0.75rem !important;
+  }
+
+  select,
+  input {
+    min-height: 44px;
+    font-size: 16px; /* Prevents zoom on iOS */
+  }
+}
+
+/* ── Responsive Flexbox Helpers ────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .hidden.md\:flex {
+    display: none !important;
+  }
+
+  .md\:flex {
+    display: flex !important;
+  }
+
+  .flex-col.sm\:flex-row {
+    flex-direction: column !important;
+  }
+
+  .max-w-7xl {
+    max-width: 100% !important;
+  }
+
+  .px-6 {
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+  }
+
+  .mb-32 {
+    margin-bottom: 2rem !important;
+  }
+
+  .mb-16 {
+    margin-bottom: 1.5rem !important;
+  }
+
+  .gap-8 {
+    gap: 1rem !important;
+  }
+
+  .gap-6 {
+    gap: 0.75rem !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .px-6 {
+    padding-left: 0.75rem !important;
+    padding-right: 0.75rem !important;
+  }
+
+  .mb-32 {
+    margin-bottom: 1rem !important;
+  }
+
+  .mb-16 {
+    margin-bottom: 1rem !important;
+  }
+
+  .gap-8 {
+    gap: 0.5rem !important;
+  }
+
+  .gap-6 {
+    gap: 0.5rem !important;
+  }
+
+  .gap-4 {
+    gap: 0.25rem !important;
+  }
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   MOBILE TRADING TERMINAL ENHANCEMENT (TradingView-Style)
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* ── Mobile Header Slider ───────────────────────────────────────────────── */
+.mobile-header-slider {
+  @apply h-12 px-0 py-0 flex items-center gap-0 flex-shrink-0;
+  background: #1a1d28;
+  border-bottom: 1px solid #222222;
+  z-index: 20;
+  width: 100%;
+  min-height: 3rem;
+  max-height: 3rem;
+}
+
+.mobile-header-slider > div {
+  scrollbar-width: none;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+}
+
+.mobile-header-slider::-webkit-scrollbar {
+  display: none;
+}
+
+/* ── Mobile Bottom Sheet ───────────────────────────────────────────────── */
+.mobile-bottom-sheet {
+  border-radius: 1.5rem 1.5rem 0 0;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.4);
+}
+
+.mobile-bottom-sheet > div:first-child {
+  touch-action: none;
+  user-select: none;
+}
+
+/* ── Mobile Hamburger Button ───────────────────────────────────────────── */
+.mobile-bottom-hamburger {
+  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.3);
+}
+
+.mobile-bottom-hamburger:active {
+  transform: scale(0.95);
+}
+
+/* ── Mobile Terminal Layout (< 768px) ──────────────────────────────────── */
+/* MERGED INTO MAIN MEDIA QUERY ABOVE - DO NOT DUPLICATE */
+
+/* ── Small Mobile (< 480px) ───────────────────────────────────────────── */
+@media (max-width: 480px) {
+  .mobile-header-slider {
+    height: 2.75rem;
+    min-height: 2.75rem;
+  }
+
+  .tv-side-icon-btn {
+    width: 2.2rem !important;
+    height: 3.2rem !important;
+  }
+
+  .mobile-bottom-sheet {
+    max-height: 80vh;
+  }
+
+  /* Hide hamburger */
+  .mobile-bottom-hamburger {
+    display: none !important;
+  }
+}
+
+/* ── Touch Device Optimizations ────────────────────────────────────────── */
+@media (hover: none) and (pointer: coarse) {
+  /* Larger button sizes for touch */
+  .mobile-bottom-hamburger {
+    min-height: 56px !important;
+    min-width: 56px !important;
+  }
+
+  .mobile-header-slider > div > div {
+    min-height: 44px;
+  }
+
+  /* Smooth scrolling for mobile */
+  .mobile-header-slider {
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .mobile-bottom-sheet {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Touch-friendly scroll indicators */
+  #symbol-slider::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* ── Terminal Mobile Bottom Bar ────────────────────────────────────────── */
+@media (max-width: 1024px) {
+  .flex-1.flex.min-h-0 {
+    padding-bottom: 4rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .h-screen.w-screen.flex.flex-col {
+    padding-bottom: 0;
+  }
 }

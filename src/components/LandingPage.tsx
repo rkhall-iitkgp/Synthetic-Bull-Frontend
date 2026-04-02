@@ -1,15 +1,16 @@
 import { Link } from 'react-router-dom';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import {
     TrendingUp, BarChart3, Activity, Zap, Globe,
     Brain, Users, LineChart, ArrowRight,
-    PlayCircle, Command, Layers, BookOpen, Clock
+    PlayCircle, Command, Layers, BookOpen, Clock, Menu, X
 } from 'lucide-react';
 import useMarketStore from '../store/useMarketStore';
 import { wsManager } from '../services/websocket';
 import { ModeToggle } from './mode-toggle';
 
 export default function LandingPage() {
+    const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const tickers = useMarketStore((state) => state.tickers);
     const prices = useMarketStore((state) => state.prices);
     const priceChanges = useMarketStore((state) => state.priceChanges);
@@ -108,11 +109,52 @@ export default function LandingPage() {
                     </div>
                     <div className="flex items-center gap-4 mr-2">
                         <ModeToggle />
-                        <Link to="/terminal" className="landing-launch-btn px-5 py-2.5 rounded-full bg-white text-black font-semibold text-sm hover:bg-gray-200 transition-colors hidden sm:block">
+                        <Link to="/terminal" className="landing-launch-btn hidden sm:block px-5 py-2.5 rounded-full bg-white text-black font-semibold text-sm hover:bg-gray-200 transition-colors">
+                            Launch Terminal
+                        </Link>
+                        {/* Mobile Menu Button */}
+                        <button
+                            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                            className="md:hidden p-2 rounded-lg hover:bg-white/10 transition-colors"
+                            aria-label="Toggle mobile menu"
+                        >
+                            {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
+                        </button>
+                    </div>
+                </div>
+                {/* Mobile Menu Dropdown */}
+                {mobileMenuOpen && (
+                    <div className="md:hidden bg-black/90 backdrop-blur-md border-t border-white/5 px-6 py-4 flex flex-col gap-4">
+                        <Link
+                            to="/terminal"
+                            onClick={() => setMobileMenuOpen(false)}
+                            className="text-gray-300 hover:text-white transition-colors py-2"
+                        >
+                            Terminal
+                        </Link>
+                        <Link
+                            to="/user/dashboard"
+                            onClick={() => setMobileMenuOpen(false)}
+                            className="text-gray-300 hover:text-white transition-colors py-2"
+                        >
+                            Workspace
+                        </Link>
+                        <Link
+                            to="/admin/dashboard"
+                            onClick={() => setMobileMenuOpen(false)}
+                            className="text-gray-300 hover:text-white transition-colors py-2"
+                        >
+                            Automation
+                        </Link>
+                        <Link
+                            to="/terminal"
+                            onClick={() => setMobileMenuOpen(false)}
+                            className="w-full px-5 py-2.5 rounded-full bg-white text-black font-semibold text-sm hover:bg-gray-200 transition-colors text-center mt-2"
+                        >
                             Launch Terminal
                         </Link>
                     </div>
-                </div>
+                )}
             </nav>
 
             {/* ── Ticker Marquee ──────────────────────────────────────────── */}

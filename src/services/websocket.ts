@@ -447,6 +447,12 @@ class WSManager {
                     }
                     return;
                 }
+
+                // Fallback for any unhandled message types - silently ignore
+                if (msgType) {
+                    // Message type exists but wasn't handled - silently ignore to prevent console spam
+                    return;
+                }
             } catch {
                 // ignore JSON errors
             }

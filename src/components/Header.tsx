@@ -131,7 +131,7 @@ return {
   },
 ];
 
-export default function Header() {
+export default function Header({ isMobileBottom = false }: { isMobileBottom?: boolean }) {
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
   const currentSymbol = useMarketStore((state) => state.currentSymbol);
@@ -349,7 +349,7 @@ export default function Header() {
   }, []);
 
   return (
-    <header className="tv-header">
+    <header className={`tv-header ${isMobileBottom ? 'tv-header-mobile-bottom' : ''}`}>
       {/* Left section */}
       <div className="tv-header-left">
         {/* Menu / Logo */}
