@@ -17,13 +17,20 @@ interface DrawingOverlayProps {
     chartRef: React.MutableRefObject<IChartApi | null>;
     seriesRef: React.MutableRefObject<any | null>;
     hideDrawings?: boolean;
+    paneId?: string;
 }
 
 const NON_DRAWING_TOOLS = ['crosshair', 'dot', 'arrow', 'zoom'];
 
-export function DrawingOverlay({ chartRef, seriesRef, hideDrawings = false }: DrawingOverlayProps) {
-    const drawings = useMarketStore(s => s.drawings);
-    const setDrawings = useMarketStore(s => s.setDrawings);
+export function DrawingOverlay({ chartRef, seriesRef, hideDrawings = false, paneId }: DrawingOverlayProps) {
+    const layoutId = useMarketStore(s => s.layoutId);
+    const drawings = useMarketStore(s => (layoutId !== 'l1' && paneId) ? (s.paneDrawings[paneId] || []) : s.drawings);
+    const _globalSetDrawings = useMarketStore(s => s.setDrawings);
+    const _setPaneDrawings = useMarketStore(s => s.setPaneDrawings);
+    const setDrawings = React.useCallback((d: Parameters<typeof _globalSetDrawings>[0]) => {
+        if (layoutId !== 'l1' && paneId) _setPaneDrawings(paneId, d);
+        else _globalSetDrawings(d);
+    }, [layoutId, paneId, _setPaneDrawings, _globalSetDrawings]);
     const activeTool = useMarketStore(s => s.activeTool);
     const setActiveTool = useMarketStore(s => s.setActiveTool);
     const magnetMode = useMarketStore(s => s.magnetMode);

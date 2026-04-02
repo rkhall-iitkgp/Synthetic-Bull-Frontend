@@ -325,6 +325,7 @@ interface MarketState {
     paneConfigs: Record<string, PaneConfig>;
     paneCandles: Record<string, Candle[]>; // Store candles per pane
     paneHistorySequence: Record<string, number>; // Per-pane history load counter
+    paneDrawings: Record<string, Drawing[]>; // Per-pane drawings
 
     // Notification State
     notifications: { id: string; message: string; type: 'success' | 'error' | 'info' }[];
@@ -357,6 +358,8 @@ interface MarketState {
     setMagnetMode: (mode: 'off' | 'weak' | 'strong') => void;
     setDrawings: (drawings: Drawing[] | ((prev: Drawing[]) => Drawing[])) => void;
     clearDrawings: () => void;
+    setPaneDrawings: (paneId: string, drawings: Drawing[] | ((prev: Drawing[]) => Drawing[])) => void;
+    clearPaneDrawings: (paneId: string) => void;
 
     addCompareSymbol: (symbol: string) => void;
     removeCompareSymbol: (symbol: string) => void;
@@ -494,6 +497,7 @@ const useMarketStore = create<MarketState>((set) => ({
         'd': [],
     },
     paneHistorySequence: { 'a': 0, 'b': 0, 'c': 0, 'd': 0 },
+    paneDrawings: { 'a': [], 'b': [], 'c': [], 'd': [] },
 
     notifications: [],
 
@@ -776,6 +780,15 @@ const useMarketStore = create<MarketState>((set) => ({
         drawings: typeof drawingsOrFn === 'function' ? (drawingsOrFn as (prev: Drawing[]) => Drawing[])(state.drawings) : drawingsOrFn
     })),
     clearDrawings: () => set({ drawings: [] }),
+    setPaneDrawings: (paneId, drawingsOrFn) => set((state) => ({
+        paneDrawings: {
+            ...state.paneDrawings,
+            [paneId]: typeof drawingsOrFn === 'function' ? (drawingsOrFn as (prev: Drawing[]) => Drawing[])(state.paneDrawings[paneId] || []) : drawingsOrFn
+        }
+    })),
+    clearPaneDrawings: (paneId) => set((state) => ({
+        paneDrawings: { ...state.paneDrawings, [paneId]: [] }
+    })),
 
     addCompareSymbol: (symbol) => set((state) => ({
         compareSymbols: state.compareSymbols.includes(symbol) ? state.compareSymbols : [...state.compareSymbols, symbol]

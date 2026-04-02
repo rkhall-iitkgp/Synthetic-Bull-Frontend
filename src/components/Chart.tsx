@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { createChart, CandlestickSeries, HistogramSeries, LineSeries, AreaSeries, BaselineSeries, ColorType, CrosshairMode, PriceScaleMode } from 'lightweight-charts';
 import type { ISeriesApi, IChartApi, UTCTimestamp, MouseEventParams } from 'lightweight-charts';
 import useMarketStore, { INDICATOR_COLORS, INDICATOR_LIBRARY, TIMEFRAMES } from '../store/useMarketStore';
-import type { Candle } from '../store/useMarketStore';
+import type { Candle, Drawing } from '../store/useMarketStore';
 import { requestHistory, requestCompareHistory, isSymbolCached } from '../services/websocket';
 import { useTheme } from '../store/ThemeContext';
 import { Search, X, Star, Bell } from 'lucide-react';
@@ -455,9 +455,20 @@ function Chart({ paneId }: { paneId?: string }) {
     const setCrosshairData = useMarketStore(s => s.setCrosshairData);
     const activeTool = useMarketStore(s => s.activeTool);
     const setActiveTool = useMarketStore(s => s.setActiveTool);
-    const drawings = useMarketStore(s => s.drawings);
-    const setDrawings = useMarketStore(s => s.setDrawings);
-    const clearDrawings = useMarketStore(s => s.clearDrawings);
+    const _layoutId = useMarketStore(s => s.layoutId);
+    const drawings = useMarketStore(s => (_layoutId !== 'l1' && paneId) ? (s.paneDrawings[paneId] || []) : s.drawings);
+    const _globalSetDrawings = useMarketStore(s => s.setDrawings);
+    const _globalClearDrawings = useMarketStore(s => s.clearDrawings);
+    const _setPaneDrawings = useMarketStore(s => s.setPaneDrawings);
+    const _clearPaneDrawings = useMarketStore(s => s.clearPaneDrawings);
+    const setDrawings = React.useCallback((d: Drawing[] | ((prev: Drawing[]) => Drawing[])) => {
+        if (_layoutId !== 'l1' && paneId) _setPaneDrawings(paneId, d);
+        else _globalSetDrawings(d);
+    }, [_layoutId, paneId, _setPaneDrawings, _globalSetDrawings]);
+    const clearDrawings = React.useCallback(() => {
+        if (_layoutId !== 'l1' && paneId) _clearPaneDrawings(paneId);
+        else _globalClearDrawings();
+    }, [_layoutId, paneId, _clearPaneDrawings, _globalClearDrawings]);
 
     // Refs to avoid stale closures and unnecessary effect resubscriptions
     const drawingsRef = useRef(drawings);
@@ -903,8 +914,7 @@ function Chart({ paneId }: { paneId?: string }) {
                 e.preventDefault();
                 e.stopPropagation();
                 if (currentCrosshairRef.current) {
-                    const currentDrawings = useMarketStore.getState().drawings;
-                    setDrawings([...currentDrawings, { type: 'horizontal_line', points: [{ time: currentCrosshairRef.current.time, price: currentCrosshairRef.current.price }] }]);
+                    setDrawings([...drawingsRef.current, { type: 'horizontal_line', points: [{ time: currentCrosshairRef.current.time, price: currentCrosshairRef.current.price }] }]);
                     setActiveTool('crosshair'); // Reset actively immediately
                 } else {
                     setActiveTool('horizontal_line'); // Fallback to tool selection if mouse is outside chart
@@ -915,8 +925,7 @@ function Chart({ paneId }: { paneId?: string }) {
                 e.preventDefault();
                 e.stopPropagation();
                 if (currentCrosshairRef.current) {
-                    const currentDrawings = useMarketStore.getState().drawings;
-                    setDrawings([...currentDrawings, { type: 'vertical_line', points: [{ time: currentCrosshairRef.current.time, price: currentCrosshairRef.current.price }] }]);
+                    setDrawings([...drawingsRef.current, { type: 'vertical_line', points: [{ time: currentCrosshairRef.current.time, price: currentCrosshairRef.current.price }] }]);
                     setActiveTool('crosshair');
                 } else {
                     setActiveTool('vertical_line');
@@ -1564,7 +1573,7 @@ function Chart({ paneId }: { paneId?: string }) {
                     <OHLCVOverlay paneId={paneId} />
                     <CompareOverlay paneId={paneId} />
                     <IndicatorsOverlay paneId={paneId} />
-                    <DrawingOverlay chartRef={chartRef} seriesRef={seriesRef} hideDrawings={drawingsHidden} />
+                    <DrawingOverlay chartRef={chartRef} seriesRef={seriesRef} hideDrawings={drawingsHidden} paneId={paneId} />
                     <div
                         ref={chartContainerRef}
                         className={`chart-canvas ${screenshotFlash ? 'animate-flash' : ''} ${activeTool === 'arrow' ? 'cursor-arrow' :
