@@ -12,6 +12,7 @@ import { List, BookOpen, Bot, Wallet } from 'lucide-react';
 import Portfolio from './Portfolio';
 import BotPanel from './BotPanel';
 import NotificationContainer from './Notification';
+import { ChartToolbar } from './ChartToolbar';
 
 export default function Terminal() {
     const [sidebarTab, setSidebarTab] = useState<'portfolio' | 'watchlist' | 'orderbook' | 'bot'>('orderbook');
@@ -42,7 +43,10 @@ export default function Terminal() {
 
             {/* Main Content Area */}
             <div className="flex-1 flex min-h-0 relative">
-                    {/* Layout-based chart grid area takes full width minus right panel */}
+                {/* Drawing Tools Sidebar (Global) */}
+                <ChartToolbar />
+
+                {/* Layout-based chart grid area takes full width minus right panel */}
                 <div className="flex-1 flex flex-col min-w-0 min-h-0 transition-all duration-300">
                     {/* Get the layout template for the current layout ID */}
                     {(() => {
@@ -68,12 +72,12 @@ export default function Terminal() {
                                             style={{
                                                 gridArea: areaName,
                                                 position: 'relative',
-                                                boxShadow: isActive ? 'inset 0 0 0 2px #2962ff' : 'none',
                                             }}
                                             className="flex flex-col min-h-0 overflow-hidden bg-bg-terminal cursor-pointer transition-all"
                                             onClick={() => setActivePaneId(areaName)}
                                         >
                                             <Chart paneId={areaName} />
+                                            {isActive && <div className="absolute inset-0 border-2 border-[#2962ff] pointer-events-none z-50"></div>}
                                         </div>
                                     );
                                 })}

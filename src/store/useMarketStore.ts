@@ -107,14 +107,14 @@ export interface SyncSettings {
 }
 
 export const LAYOUT_TEMPLATES: LayoutTemplate[] = [
-    { id: 'l1',   panes: 1, label: '1 Pane',       gridTemplateColumns: '1fr',       gridTemplateRows: '1fr',       gridTemplateAreas: '"a"',                 paneAreaNames: ['a'] },
-    { id: 'l2h',  panes: 2, label: '2 Horizontal',  gridTemplateColumns: '1fr 1fr',   gridTemplateRows: '1fr',       gridTemplateAreas: '"a b"',               paneAreaNames: ['a', 'b'] },
-    { id: 'l2v',  panes: 2, label: '2 Vertical',    gridTemplateColumns: '1fr',       gridTemplateRows: '1fr 1fr',   gridTemplateAreas: '"a" "b"',             paneAreaNames: ['a', 'b'] },
-    { id: 'l3h',  panes: 3, label: '3 Columns',     gridTemplateColumns: '1fr 1fr 1fr', gridTemplateRows: '1fr',     gridTemplateAreas: '"a b c"',             paneAreaNames: ['a', 'b', 'c'] },
-    { id: 'l4',   panes: 4, label: '4 Grid',        gridTemplateColumns: '1fr 1fr',   gridTemplateRows: '1fr 1fr',   gridTemplateAreas: '"a b" "c d"',         paneAreaNames: ['a', 'b', 'c', 'd'] },
-    { id: 'l1r2', panes: 3, label: '1+2 Right',     gridTemplateColumns: '2fr 1fr',   gridTemplateRows: '1fr 1fr',   gridTemplateAreas: '"a b" "a c"',         paneAreaNames: ['a', 'b', 'c'] },
-    { id: 'l2b1', panes: 3, label: '2+1 Bottom',    gridTemplateColumns: '1fr 1fr',   gridTemplateRows: '1fr 1fr',   gridTemplateAreas: '"a b" "c c"',         paneAreaNames: ['a', 'b', 'c'] },
-    { id: 'l1l3', panes: 4, label: '1+3 Side',      gridTemplateColumns: '3fr 1fr',   gridTemplateRows: '1fr 1fr 1fr', gridTemplateAreas: '"a b" "a c" "a d"', paneAreaNames: ['a', 'b', 'c', 'd'] },
+    { id: 'l1', panes: 1, label: '1 Pane', gridTemplateColumns: '1fr', gridTemplateRows: '1fr', gridTemplateAreas: '"a"', paneAreaNames: ['a'] },
+    { id: 'l2h', panes: 2, label: '2 Horizontal', gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr', gridTemplateAreas: '"a b"', paneAreaNames: ['a', 'b'] },
+    { id: 'l2v', panes: 2, label: '2 Vertical', gridTemplateColumns: '1fr', gridTemplateRows: '1fr 1fr', gridTemplateAreas: '"a" "b"', paneAreaNames: ['a', 'b'] },
+    { id: 'l3h', panes: 3, label: '3 Columns', gridTemplateColumns: '1fr 1fr 1fr', gridTemplateRows: '1fr', gridTemplateAreas: '"a b c"', paneAreaNames: ['a', 'b', 'c'] },
+    { id: 'l4', panes: 4, label: '4 Grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 1fr', gridTemplateAreas: '"a b" "c d"', paneAreaNames: ['a', 'b', 'c', 'd'] },
+    { id: 'l1r2', panes: 3, label: '1+2 Right', gridTemplateColumns: '2fr 1fr', gridTemplateRows: '1fr 1fr', gridTemplateAreas: '"a b" "a c"', paneAreaNames: ['a', 'b', 'c'] },
+    { id: 'l2b1', panes: 3, label: '2+1 Bottom', gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 1fr', gridTemplateAreas: '"a b" "c c"', paneAreaNames: ['a', 'b', 'c'] },
+    { id: 'l1l3', panes: 4, label: '1+3 Side', gridTemplateColumns: '3fr 1fr', gridTemplateRows: '1fr 1fr 1fr', gridTemplateAreas: '"a b" "a c" "a d"', paneAreaNames: ['a', 'b', 'c', 'd'] },
 ];
 
 export interface PaneConfig {
@@ -313,21 +313,21 @@ interface MarketState {
     replaySpeed: number; // updates per second (e.g. 1, 3, 5)
     isReplaying: boolean;
     _savedFullHistory?: Candle[];
-    
+
     // Bot State
     botStatus: Record<string, 'running' | 'stopped' | 'standby'>;
     botConfigs: Record<string, BotConfig>;
-    
+
     // Layout State
     layoutId: string;
     syncSettings: SyncSettings;
     activePaneId: string;
     paneConfigs: Record<string, PaneConfig>;
     paneCandles: Record<string, Candle[]>; // Store candles per pane
-    
+
     // Notification State
     notifications: { id: string; message: string; type: 'success' | 'error' | 'info' }[];
-    
+
     setTimeframe: (seconds: number) => void;
     setCurrentSymbol: (symbol: string) => void;
     setSymbols: (symbols: string[]) => void;
@@ -335,8 +335,8 @@ interface MarketState {
     setUserId: (uid: string | null) => void;
     resetSymbolData: () => void;
     setCrosshairData: (data: CrosshairData | null) => void;
-    setCandlesData: (candles: Candle[], latestCandle?: Candle | null, forSymbol?: string) => void;
-    setLatestCandle: (candle: Candle) => void;
+    setCandlesData: (candles: Candle[], latestCandle?: Candle | null, forSymbol?: string, forTimeframe?: number) => void;
+    setLatestCandle: (candle: Candle, forSymbol?: string, forTimeframe?: number) => void;
     clearCandles: () => void;
     setOrderBook: (bids: { price: number, qty: number }[], asks: { price: number, qty: number }[]) => void;
     addTrade: (trade: Trade) => void;
@@ -356,7 +356,7 @@ interface MarketState {
     setMagnetMode: (mode: 'off' | 'weak' | 'strong') => void;
     setDrawings: (drawings: Drawing[] | ((prev: Drawing[]) => Drawing[])) => void;
     clearDrawings: () => void;
-    
+
     addCompareSymbol: (symbol: string) => void;
     removeCompareSymbol: (symbol: string) => void;
     setCompareCandles: (symbol: string, candles: Candle[]) => void;
@@ -505,20 +505,15 @@ const useMarketStore = create<MarketState>((set) => ({
     setCrosshairData: (data) => set({ crosshairData: data }),
 
     setCurrentSymbol: (symbol) => set((state) => {
-        // In single-pane mode, update global symbol normally
-        if (state.layoutId === 'l1') {
-            return { currentSymbol: symbol };
-        }
+        const update: Partial<MarketState> = { currentSymbol: symbol };
 
-        // In multi-pane mode, update active pane's symbol without changing global currentSymbol
-        // This allows each pane to have independent data
-        const update: Partial<MarketState> = {};
-        if (state.activePaneId) {
+        // Also update active pane if in multi-pane mode
+        if (state.layoutId !== 'l1' && state.activePaneId) {
             update.paneConfigs = {
                 ...state.paneConfigs,
-                [state.activePaneId]: { 
-                    ...state.paneConfigs[state.activePaneId], 
-                    symbol 
+                [state.activePaneId]: {
+                    ...state.paneConfigs[state.activePaneId],
+                    symbol
                 }
             };
         }
@@ -528,153 +523,117 @@ const useMarketStore = create<MarketState>((set) => ({
     setTickers: (tickers) => set({ tickers }),
     setUserId: (uid) => set({ userId: uid }),
 
-    setCandlesData: (candles, latestCandle = null, forSymbol) => set((state) => {
-        if (state.isReplayMode) return state; // Ignore live history updates during replay
+    setCandlesData: (candles, latestCandle = null, forSymbol, forTimeframe) => set((state) => {
+        if (state.isReplayMode) return state;
 
+        const symbol = forSymbol || state.currentSymbol;
+        const timeframe = forTimeframe || state.timeframe;
         const source = candles || state.candles;
         const safeCandles = sanitizeCandles(source).slice(-2000);
         const safeLatest = latestCandle
             ? { ...latestCandle, time: normalizeCandleTime(latestCandle.time) }
             : safeCandles[safeCandles.length - 1] || state.latestCandle;
 
-        // If forSymbol is provided and differs from current symbol, store in paneCandles instead
-        if (forSymbol && forSymbol !== state.currentSymbol) {
-            // Find panes matching this symbol and update their candles
-            const newPaneCandles = { ...state.paneCandles };
-            for (const [paneId, config] of Object.entries(state.paneConfigs)) {
-                if (config.symbol === forSymbol) {
-                    newPaneCandles[paneId] = safeCandles;
-                }
+        // Update all matching panes (Symbol + Timeframe must match)
+        const newPaneCandles = { ...state.paneCandles };
+        for (const [paneId, config] of Object.entries(state.paneConfigs)) {
+            if (config.symbol === symbol && config.timeframe === timeframe) {
+                newPaneCandles[paneId] = safeCandles;
             }
-            return { paneCandles: newPaneCandles };
         }
 
-        // Default behavior: update global candles
-        if (safeLatest) {
-            const previousPrice = state.lastPrice || safeLatest.close;
-            useMarketStore.getState().checkAlerts(state.currentSymbol, safeLatest.close, previousPrice);
-        }
+        const update: Partial<MarketState> = { paneCandles: newPaneCandles };
 
-        if (!safeLatest) {
-            return {
+        // Only update global state if this belongs to the current global context
+        if (symbol === state.currentSymbol && timeframe === state.timeframe) {
+            if (safeLatest) {
+                const previousPrice = state.lastPrice || safeLatest.close;
+                state.checkAlerts(symbol, safeLatest.close, previousPrice);
+            }
+
+            const baseline = state.priceBaselines[symbol] ?? safeLatest?.close ?? 0;
+            const nextPriceBaselines = state.priceBaselines[symbol] == null
+                ? { ...state.priceBaselines, [symbol]: baseline }
+                : state.priceBaselines;
+            const liveChange = baseline === 0 ? 0 : (((safeLatest?.close || 0) - baseline) / baseline) * 100;
+
+            Object.assign(update, {
                 candles: safeCandles,
                 latestCandle: safeLatest,
+                prices: { ...state.prices, [symbol]: safeLatest?.close || 0 },
+                priceBaselines: nextPriceBaselines,
+                priceChanges: { ...state.priceChanges, [symbol]: liveChange },
+                lastPrice: safeLatest?.close || 0,
+                priceChange24h: liveChange,
                 historySequence: state.historySequence + 1,
-            };
-        }
-
-        const symbol = state.currentSymbol;
-        const baseline = state.priceBaselines[symbol] ?? safeLatest.close;
-        const nextPriceBaselines = state.priceBaselines[symbol] == null
-            ? { ...state.priceBaselines, [symbol]: baseline }
-            : state.priceBaselines;
-        const liveChange = baseline === 0 ? 0 : ((safeLatest.close - baseline) / baseline) * 100;
-
-        return {
-            candles: safeCandles,
-            latestCandle: safeLatest,
-            prices: { ...state.prices, [symbol]: safeLatest.close },
-            priceBaselines: nextPriceBaselines,
-            priceChanges: { ...state.priceChanges, [symbol]: liveChange },
-            lastPrice: safeLatest.close,
-            priceChange24h: liveChange,
-            historySequence: state.historySequence + 1,
-        };
-    }),
-
-    setLatestCandle: (candle: Candle) => set((state) => {
-        if (state.isReplayMode) return state; // Ignore live websocket updates during replay
-
-        const normalizedCandle = { ...candle, time: normalizeCandleTime(candle.time) };
-        const updatedCandles = [...state.candles];
-        const lastCandle = updatedCandles.length > 0 ? updatedCandles[updatedCandles.length - 1] : null;
-
-        if (lastCandle) {
-            if (normalizedCandle.time < lastCandle.time) {
-                // Out of order old candle, ignore
-                return state;
-            } else if (normalizedCandle.time === lastCandle.time) {
-                // Duplicate timestamp, overwrite instead of pushing
-                updatedCandles[updatedCandles.length - 1] = normalizedCandle;
-            } else {
-                // Safely greater, push
-                updatedCandles.push(normalizedCandle);
-            }
-        } else {
-            updatedCandles.push(normalizedCandle);
-        }
-
-        if (updatedCandles.length > 2000) {
-            updatedCandles.shift();
-        }
-        const symbol = state.currentSymbol;
-        const baseline = state.priceBaselines[symbol] ?? normalizedCandle.close;
-        const nextPriceBaselines = state.priceBaselines[symbol] == null
-            ? { ...state.priceBaselines, [symbol]: baseline }
-            : state.priceBaselines;
-        const liveChange = baseline === 0 ? 0 : ((normalizedCandle.close - baseline) / baseline) * 100;
-
-        return {
-            latestCandle: normalizedCandle,
-            candles: updatedCandles,
-            lastPrice: normalizedCandle.close,
-            prices: { ...state.prices, [symbol]: normalizedCandle.close },
-            priceBaselines: nextPriceBaselines,
-            priceChanges: { ...state.priceChanges, [symbol]: liveChange },
-            priceChange24h: liveChange,
-        };
-    }),
-
-    // Alert logic implementation
-    alerts: [],
-    addAlert: (alertData) => set((state) => ({
-        alerts: [
-            ...state.alerts,
-            {
-                ...alertData,
-                id: Math.random().toString(36).substr(2, 9),
-                active: true,
-                createdAt: Date.now()
-            }
-        ]
-    })),
-    removeAlert: (id) => set((state) => ({
-        alerts: state.alerts.filter(a => a.id !== id)
-    })),
-    checkAlerts: (symbol, currentPrice, previousPrice) => set((state) => {
-        const triggeredAlerts = state.alerts.filter(alert => {
-            if (!alert.active || alert.symbol !== symbol) return false;
-            
-            if (alert.type === 'crossing') {
-                return (previousPrice < alert.targetPrice && currentPrice >= alert.targetPrice) || 
-                       (previousPrice > alert.targetPrice && currentPrice <= alert.targetPrice);
-            }
-            if (alert.type === 'above') {
-                return previousPrice < alert.targetPrice && currentPrice >= alert.targetPrice;
-            }
-            if (alert.type === 'below') {
-                return previousPrice > alert.targetPrice && currentPrice <= alert.targetPrice;
-            }
-            return false;
-        });
-
-        if (triggeredAlerts.length > 0) {
-            triggeredAlerts.forEach(a => {
-                window.dispatchEvent(new CustomEvent('show-toast', { 
-                    detail: `ALERT: ${a.symbol} ${a.type} ${a.targetPrice} (Current: ${currentPrice.toFixed(2)})` 
-                }));
             });
-            
-            // Deactivate triggered alerts
-            const triggeredIds = new Set(triggeredAlerts.map(a => a.id));
-            return {
-                alerts: state.alerts.map(a => triggeredIds.has(a.id) ? { ...a, active: false } : a)
-            };
         }
-        return state;
+
+        return update;
     }),
 
-    clearCandles: () => set((state) => ({ candles: [], latestCandle: null, historySequence: state.historySequence + 1 })),
+    setLatestCandle: (candle, forSymbol, forTimeframe) => set((state) => {
+        if (state.isReplayMode) return state;
+
+        const symbol = forSymbol || state.currentSymbol;
+        const timeframe = forTimeframe || state.timeframe;
+        const normalizedCandle = { ...candle, time: normalizeCandleTime(candle.time) };
+
+        // Update all matching panes
+        const newPaneCandles = { ...state.paneCandles };
+        for (const [paneId, config] of Object.entries(state.paneConfigs)) {
+            if (config.symbol === symbol && config.timeframe === timeframe) {
+                const paneCandleList = [...(newPaneCandles[paneId] || [])];
+                const last = paneCandleList[paneCandleList.length - 1];
+                if (!last || normalizedCandle.time > last.time) {
+                    paneCandleList.push(normalizedCandle);
+                    if (paneCandleList.length > 2000) paneCandleList.shift();
+                } else if (normalizedCandle.time === last.time) {
+                    paneCandleList[paneCandleList.length - 1] = normalizedCandle;
+                }
+                newPaneCandles[paneId] = paneCandleList;
+            }
+        }
+
+        const update: Partial<MarketState> = { paneCandles: newPaneCandles };
+
+        // Global update
+        if (symbol === state.currentSymbol && timeframe === state.timeframe) {
+            const updatedGlobal = [...state.candles];
+            const last = updatedGlobal[updatedGlobal.length - 1];
+            if (!last || normalizedCandle.time > last.time) {
+                updatedGlobal.push(normalizedCandle);
+                if (updatedGlobal.length > 2000) updatedGlobal.shift();
+            } else if (normalizedCandle.time === last.time) {
+                updatedGlobal[updatedGlobal.length - 1] = normalizedCandle;
+            }
+
+            const baseline = state.priceBaselines[symbol] ?? normalizedCandle.close;
+            const nextPriceBaselines = state.priceBaselines[symbol] == null
+                ? { ...state.priceBaselines, [symbol]: baseline }
+                : state.priceBaselines;
+            const liveChange = baseline === 0 ? 0 : ((normalizedCandle.close - baseline) / baseline) * 100;
+
+            Object.assign(update, {
+                latestCandle: normalizedCandle,
+                candles: updatedGlobal,
+                lastPrice: normalizedCandle.close,
+                prices: { ...state.prices, [symbol]: normalizedCandle.close },
+                priceBaselines: nextPriceBaselines,
+                priceChanges: { ...state.priceChanges, [symbol]: liveChange },
+                priceChange24h: liveChange,
+            });
+        }
+
+        return update;
+    }),
+
+    clearCandles: () => set((state) => ({
+        candles: [],
+        latestCandle: null,
+        paneCandles: {},
+        historySequence: state.historySequence + 1
+    })),
 
     setOrderBook: (bids, asks) => set({ orderBook: { bids, asks } }),
 
@@ -693,18 +652,16 @@ const useMarketStore = create<MarketState>((set) => ({
     addOrder: (order) => set((state) => ({ openOrders: [...state.openOrders, order] })),
     removeOrder: (orderId) => set((state) => ({ openOrders: state.openOrders.filter((o) => o.order_id !== orderId) })),
     setOpenOrders: (orders) => set({ openOrders: orders }),
+
     setPortfolio: (p) => {
         set((state) => {
-            // Check if incoming portfolio is the default "reset" state (100k cash, no holdings, no P&L)
             const isServerReset = p.holdings.length === 0 && p.cash === 100000 && p.realizedPnl === 0 && p.unrealizedPnl === 0;
             const hasLocalData = state.portfolio.holdings.length > 0;
 
             if (isServerReset && hasLocalData) {
-                console.log('Preserving local holdings - server appears to have reset');
                 return { portfolio: state.portfolio };
             }
 
-            // Merge holdings: Keep existing ones if they aren't in the incoming update
             const mergedHoldings = [...p.holdings];
             const incomingAssets = new Set(p.holdings.map(h => h.asset));
 
@@ -714,9 +671,8 @@ const useMarketStore = create<MarketState>((set) => ({
                 }
             }
 
-            // Recalculate totals based on merged holdings
-            const totalMarketValue = mergedHoldings.reduce((sum, h) => sum + h.marketValue, 0);
-            const totalUnrealizedPnl = mergedHoldings.reduce((sum, h) => sum + h.unrealizedPnl, 0);
+            const totalMarketValue = mergedHoldings.reduce((sum, h) => sum + (h.marketValue || 0), 0);
+            const totalUnrealizedPnl = mergedHoldings.reduce((sum, h) => sum + (h.unrealizedPnl || 0), 0);
             const updatedTotalValue = p.cash + totalMarketValue;
 
             const updatedPortfolio = {
@@ -735,9 +691,8 @@ const useMarketStore = create<MarketState>((set) => ({
         const newIndicators = state.enabledIndicators.includes(indicatorId)
             ? state.enabledIndicators.filter((id) => id !== indicatorId)
             : [...state.enabledIndicators, indicatorId];
-        
+
         const update: Partial<MarketState> = { enabledIndicators: newIndicators };
-        // Also update active pane if in multi-pane mode
         if (state.layoutId !== 'l1' && state.activePaneId) {
             update.paneConfigs = {
                 ...state.paneConfigs,
@@ -749,13 +704,10 @@ const useMarketStore = create<MarketState>((set) => ({
 
     setIndicatorEnabled: (indicatorId, enabled) => set((state) => {
         const newIndicators = enabled
-            ? (state.enabledIndicators.includes(indicatorId)
-                ? state.enabledIndicators
-                : [...state.enabledIndicators, indicatorId])
+            ? (state.enabledIndicators.includes(indicatorId) ? state.enabledIndicators : [...state.enabledIndicators, indicatorId])
             : state.enabledIndicators.filter((id) => id !== indicatorId);
-        
+
         const update: Partial<MarketState> = { enabledIndicators: newIndicators };
-        // Also update active pane if in multi-pane mode
         if (state.layoutId !== 'l1' && state.activePaneId) {
             update.paneConfigs = {
                 ...state.paneConfigs,
@@ -765,17 +717,27 @@ const useMarketStore = create<MarketState>((set) => ({
         return update;
     }),
 
-    clearIndicators: () => set({ enabledIndicators: [] }),
+    clearIndicators: () => set((state) => {
+        const update: Partial<MarketState> = { enabledIndicators: [] };
+        if (state.layoutId !== 'l1' && state.activePaneId) {
+            update.paneConfigs = {
+                ...state.paneConfigs,
+                [state.activePaneId]: { ...state.paneConfigs[state.activePaneId], enabledIndicators: [] }
+            };
+        }
+        return update;
+    }),
+
     addToWatchlist: (symbol) => set((state) => ({
         watchlist: state.watchlist.includes(symbol) ? state.watchlist : [...state.watchlist, symbol]
     })),
+
     removeFromWatchlist: (symbol) => set((state) => ({
         watchlist: state.watchlist.filter((s) => s !== symbol)
     })),
 
     setPrice: (symbol, price, _change) => set((state) => {
         void _change;
-
         const baseline = state.priceBaselines[symbol] ?? price;
         const nextPriceBaselines = state.priceBaselines[symbol] == null
             ? { ...state.priceBaselines, [symbol]: baseline }
@@ -786,7 +748,7 @@ const useMarketStore = create<MarketState>((set) => ({
         const nextChanges = { ...state.priceChanges, [symbol]: liveChange };
 
         const previousPrice = state.prices[symbol] || price;
-        useMarketStore.getState().checkAlerts(symbol, price, previousPrice);
+        state.checkAlerts(symbol, price, previousPrice);
 
         if (symbol === state.currentSymbol) {
             return {
@@ -814,6 +776,7 @@ const useMarketStore = create<MarketState>((set) => ({
     addCompareSymbol: (symbol) => set((state) => ({
         compareSymbols: state.compareSymbols.includes(symbol) ? state.compareSymbols : [...state.compareSymbols, symbol]
     })),
+
     removeCompareSymbol: (symbol) => set((state) => {
         const nextCandles = { ...state.compareCandles };
         delete nextCandles[symbol];
@@ -822,15 +785,16 @@ const useMarketStore = create<MarketState>((set) => ({
             compareCandles: nextCandles
         };
     }),
+
     setCompareCandles: (symbol, candles) => set((state) => ({
         compareCandles: {
             ...state.compareCandles,
             [symbol]: sanitizeCandles(candles).slice(-2000)
         }
     })),
+
     updateCompareCandle: (symbol, candle) => set((state) => {
         if (!state.compareSymbols.includes(symbol)) return state;
-        
         const currentCandles = state.compareCandles[symbol] || [];
         const normalizedCandle = { ...candle, time: normalizeCandleTime(candle.time) };
         const updatedCandles = [...currentCandles];
@@ -871,11 +835,11 @@ const useMarketStore = create<MarketState>((set) => ({
     updateSyncSettings: (settings) => set((state) => ({
         syncSettings: { ...state.syncSettings, ...settings }
     })),
+
     setActivePaneId: (paneId) => set((state) => {
-        // When switching panes, load that pane's config into the global state
         const targetPane = state.paneConfigs[paneId];
         if (!targetPane) return { activePaneId: paneId };
-        
+
         return {
             activePaneId: paneId,
             currentSymbol: targetPane.symbol,
@@ -884,21 +848,23 @@ const useMarketStore = create<MarketState>((set) => ({
             enabledIndicators: targetPane.enabledIndicators,
         };
     }),
+
     updatePaneConfig: (paneId, config) => set((state) => ({
         paneConfigs: {
             ...state.paneConfigs,
             [paneId]: { ...state.paneConfigs[paneId], ...config }
         }
     })),
+
     setPaneCandles: (paneId, candles) => set((state) => ({
         paneCandles: {
             ...state.paneCandles,
             [paneId]: candles
         }
     })),
+
     setTimeframe: (seconds) => set((state) => {
         const update: Partial<MarketState> = { timeframe: seconds };
-        // Also update active pane if in multi-pane mode
         if (state.layoutId !== 'l1' && state.activePaneId) {
             update.paneConfigs = {
                 ...state.paneConfigs,
@@ -907,9 +873,9 @@ const useMarketStore = create<MarketState>((set) => ({
         }
         return update;
     }),
+
     setChartType: (type) => set((state) => {
         const update: Partial<MarketState> = { chartType: type };
-        // Also update active pane if in multi-pane mode
         if (state.layoutId !== 'l1' && state.activePaneId) {
             update.paneConfigs = {
                 ...state.paneConfigs,
@@ -919,7 +885,47 @@ const useMarketStore = create<MarketState>((set) => ({
         return update;
     }),
 
-    // Replay implementaton
+    alerts: [],
+    addAlert: (alertData) => set((state) => ({
+        alerts: [
+            ...state.alerts,
+            {
+                ...alertData,
+                id: Math.random().toString(36).substr(2, 9),
+                active: true,
+                createdAt: Date.now()
+            }
+        ]
+    })),
+    removeAlert: (id) => set((state) => ({
+        alerts: state.alerts.filter(a => a.id !== id)
+    })),
+    checkAlerts: (symbol, currentPrice, previousPrice) => set((state) => {
+        const triggeredAlerts = state.alerts.filter(alert => {
+            if (!alert.active || alert.symbol !== symbol) return false;
+            if (alert.type === 'crossing') {
+                return (previousPrice < alert.targetPrice && currentPrice >= alert.targetPrice) ||
+                    (previousPrice > alert.targetPrice && currentPrice <= alert.targetPrice);
+            }
+            if (alert.type === 'above') return previousPrice < alert.targetPrice && currentPrice >= alert.targetPrice;
+            if (alert.type === 'below') return previousPrice > alert.targetPrice && currentPrice <= alert.targetPrice;
+            return false;
+        });
+
+        if (triggeredAlerts.length > 0) {
+            triggeredAlerts.forEach(a => {
+                window.dispatchEvent(new CustomEvent('show-toast', {
+                    detail: `ALERT: ${a.symbol} ${a.type} ${a.targetPrice} (Current: ${currentPrice.toFixed(2)})`
+                }));
+            });
+            const triggeredIds = new Set(triggeredAlerts.map(a => a.id));
+            return {
+                alerts: state.alerts.map(a => triggeredIds.has(a.id) ? { ...a, active: false } : a)
+            };
+        }
+        return state;
+    }),
+
     startReplay: (startIndex, allCandles) => set((state) => {
         const initialCandles = allCandles.slice(0, startIndex + 1);
         const futureCandles = allCandles.slice(startIndex + 1);
@@ -930,17 +936,14 @@ const useMarketStore = create<MarketState>((set) => ({
             replayCandles: futureCandles,
             candles: initialCandles,
             latestCandle: initialCandles[initialCandles.length - 1] || null,
-        // Save the full history so we can restore it when replay closes!
-        _savedFullHistory: allCandles,
+            _savedFullHistory: allCandles,
             historySequence: state.historySequence + 1,
-            activeTool: 'crosshair', // reset tool
+            activeTool: 'crosshair',
         };
     }),
 
     stopReplay: () => set((state) => {
-        if (!state.isReplayMode) return state; // Safety guard if we cancel before clicking the chart
-
-        // Restore full history so the chart doesn't break, and is ready for another replay or live mode
+        if (!state.isReplayMode) return state;
         const restoredCandles = state._savedFullHistory || [];
         return {
             isReplayMode: false,
@@ -957,8 +960,7 @@ const useMarketStore = create<MarketState>((set) => ({
     setIsReplaying: (playing) => set((state) => {
         if (playing && state.isReplayMode && state.replayIndex >= state.replayCandles.length) {
             const all = state._savedFullHistory || [];
-            const future = state.replayCandles;
-            const init = all.slice(0, all.length - future.length);
+            const init = all.slice(0, all.length - state.replayCandles.length);
             return {
                 isReplaying: true,
                 replayIndex: 0,
@@ -971,16 +973,10 @@ const useMarketStore = create<MarketState>((set) => ({
     }),
 
     stepReplay: () => set((state) => {
-        if (!state.isReplayMode) return state;
-        if (state.replayIndex >= state.replayCandles.length) {
-            // End of replay data
-            return { isReplaying: false };
-        }
-
+        if (!state.isReplayMode || state.replayIndex >= state.replayCandles.length) return { isReplaying: false };
         const nextCandle = state.replayCandles[state.replayIndex];
         const updatedCandles = [...state.candles, nextCandle];
         if (updatedCandles.length > 2000) updatedCandles.shift();
-
         return {
             replayIndex: state.replayIndex + 1,
             candles: updatedCandles,

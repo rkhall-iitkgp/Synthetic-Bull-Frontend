@@ -5,20 +5,20 @@ export const candleWorker = new Worker(new URL('../workers/candleWorker.ts', imp
 });
 
 candleWorker.onmessage = (e) => {
-    const { type, candle, candles } = e.data;
+    const { type, candle, candles, symbol, timeframeSec } = e.data;
 
     if (type === 'CANDLE_UPDATE') {
-        useMarketStore.getState().setLatestCandle(candle);
+        useMarketStore.getState().setLatestCandle(candle, symbol, timeframeSec);
     }
     else if (type === 'HISTORY_UPDATE') {
-        useMarketStore.getState().setCandlesData(candles);
+        useMarketStore.getState().setCandlesData(candles, null, symbol, timeframeSec);
     }
     else if (type === 'CLEAR') {
         // Worker reset — clear all chart data
         useMarketStore.getState().clearCandles();
     }
     else if (type === 'COMPARE_HISTORY_UPDATE') {
-        useMarketStore.getState().setCompareCandles(e.data.symbol, e.data.candles);
+        useMarketStore.getState().setCompareCandles(symbol, candles);
     }
 };
 
@@ -83,6 +83,18 @@ export function requestCompareHistory(symbol: string) {
 }
 
 useMarketStore.subscribe((state, prevState) => {
+    // 1. Handle layout changes or full re-initialization
+    if (state.layoutId !== prevState.layoutId) {
+        // Initialize all panes in the worker
+        Object.values(state.paneConfigs).forEach(config => {
+            candleWorker.postMessage({
+                type: 'INIT',
+                payload: { timeframeSec: config.timeframe, symbol: config.symbol }
+            });
+        });
+    }
+
+    // 2. Handle current symbol/timeframe changes (including single pane property changes)
     if (state.currentSymbol !== prevState.currentSymbol || state.timeframe !== prevState.timeframe) {
         candleWorker.postMessage({
             type: 'INIT',
@@ -93,11 +105,14 @@ useMarketStore.subscribe((state, prevState) => {
         state.compareSymbols.forEach((sym) => requestCompareHistory(sym));
     }
 
+    // 3. Handle replay mode transitions
     if (prevState.isReplayMode && !state.isReplayMode) {
-        // Re-init worker to rebuild from rawCache after replay ends
-        candleWorker.postMessage({
-            type: 'INIT',
-            payload: { timeframeSec: state.timeframe, symbol: state.currentSymbol }
+        // Re-init worker for all panes to rebuild from rawCache after replay ends
+        Object.values(state.paneConfigs).forEach(config => {
+            candleWorker.postMessage({
+                type: 'INIT',
+                payload: { timeframeSec: config.timeframe, symbol: config.symbol }
+            });
         });
 
         state.compareSymbols.forEach((sym) => requestCompareHistory(sym));
@@ -146,11 +161,6 @@ class WSManager {
 
             initState.compareSymbols.forEach((sym) => requestCompareHistory(sym));
 
-            // Frontend session uses guest_login (no API key required).
-            this.send({ type: 'guest_login' });
-
-            // Ask for symbol list in case welcome arrives before UI is ready.
-            this.send({ type: 'get_symbols' });
         };
 
         this.ws.onmessage = (event) => {

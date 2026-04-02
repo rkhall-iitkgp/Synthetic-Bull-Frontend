@@ -45,7 +45,6 @@ import {
     calculateUltimateOscillator,
 } from '../lib/indicators';
 import ReplayControls from './ReplayControls';
-import { ChartToolbar } from './ChartToolbar';
 import { AlertModal } from './AlertModal';
 import { DrawingOverlay } from './DrawingOverlay';
 
@@ -323,11 +322,12 @@ export function TickerSearch() {
 }
 
 // ─── OHLCV Info Overlay ─────────────────────────────────────────────────────
-function OHLCVOverlay() {
+function OHLCVOverlay({ paneId }: { paneId?: string }) {
     const crosshairData = useMarketStore(s => s.crosshairData);
-    const currentSymbol = useMarketStore(s => s.currentSymbol);
-    const timeframe = useMarketStore(s => s.timeframe);
-    const latestCandle = useMarketStore(s => s.latestCandle);
+    const layoutId = useMarketStore(s => s.layoutId);
+    const currentSymbol = useMarketStore(s => layoutId === 'l1' || !paneId ? s.currentSymbol : s.paneConfigs[paneId]?.symbol || s.currentSymbol);
+    const timeframe = useMarketStore(s => layoutId === 'l1' || !paneId ? s.timeframe : s.paneConfigs[paneId]?.timeframe || s.timeframe);
+    const latestCandle = useMarketStore(s => (layoutId !== 'l1' && paneId && s.paneCandles[paneId]?.length > 0) ? s.paneCandles[paneId][s.paneCandles[paneId].length - 1] : s.latestCandle);
 
     const tf = TIMEFRAMES.find(t => t.seconds === timeframe);
     const rawData = crosshairData || latestCandle;
@@ -362,7 +362,8 @@ function OHLCVOverlay() {
     );
 }
 
-function CompareOverlay() {
+function CompareOverlay({ paneId }: { paneId?: string }) {
+    void paneId; // Compare symbols are global for now
     const compareSymbols = useMarketStore((s) => s.compareSymbols);
     const compareCandles = useMarketStore((s) => s.compareCandles);
     const removeCompareSymbol = useMarketStore((s) => s.removeCompareSymbol);
@@ -392,8 +393,8 @@ function CompareOverlay() {
     );
 }
 
-function IndicatorsOverlay() {
-    const enabledIndicators = useMarketStore((s) => s.enabledIndicators);
+function IndicatorsOverlay({ paneId }: { paneId?: string }) {
+    const enabledIndicators = useMarketStore((s) => s.layoutId === 'l1' || !paneId ? s.enabledIndicators : s.paneConfigs[paneId]?.enabledIndicators || s.enabledIndicators);
     if (!enabledIndicators.length) return null;
 
     const labels = INDICATOR_LIBRARY.reduce<Record<string, string>>((acc, item) => {
@@ -431,12 +432,12 @@ class ChartErrorBoundary extends React.Component<{ children: React.ReactNode }, 
     }
 }
 
-export default function ChartContainer() {
-    return <ChartErrorBoundary><Chart /></ChartErrorBoundary>;
+export default function ChartContainer({ paneId }: { paneId?: string }) {
+    return <ChartErrorBoundary><Chart paneId={paneId} /></ChartErrorBoundary>;
 }
 
 // ─── Main Chart Component ───────────────────────────────────────────────────
-function Chart() {
+function Chart({ paneId }: { paneId?: string }) {
     const { theme } = useTheme();
     const chartContainerRef = useRef<HTMLDivElement>(null);
     const chartRef = useRef<IChartApi | null>(null);
@@ -445,11 +446,12 @@ function Chart() {
         volume: ISeriesApi<"Histogram">;
     } | null>(null);
 
-    const candles = useMarketStore(s => s.candles);
+
+    const candles = useMarketStore(s => (s.layoutId !== 'l1' && paneId && s.paneConfigs[paneId] && s.paneCandles[paneId]?.length > 0) ? s.paneCandles[paneId] : s.candles);
     const historySequence = useMarketStore(s => s.historySequence);
-    const enabledIndicators = useMarketStore((s) => s.enabledIndicators);
-    const chartType = useMarketStore(s => s.chartType);
-    const currentSymbol = useMarketStore(s => s.currentSymbol);
+    const enabledIndicators = useMarketStore((s) => s.layoutId === 'l1' || !paneId ? s.enabledIndicators : s.paneConfigs[paneId]?.enabledIndicators || s.enabledIndicators);
+    const chartType = useMarketStore(s => s.layoutId === 'l1' || !paneId ? s.chartType : s.paneConfigs[paneId]?.chartType || s.chartType);
+    const currentSymbol = useMarketStore(s => s.layoutId === 'l1' || !paneId ? s.currentSymbol : s.paneConfigs[paneId]?.symbol || s.currentSymbol);
     const setCrosshairData = useMarketStore(s => s.setCrosshairData);
     const activeTool = useMarketStore(s => s.activeTool);
     const setActiveTool = useMarketStore(s => s.setActiveTool);
@@ -700,7 +702,7 @@ function Chart() {
             mainSeries.setData(existingCandles.map(formatCandleData) as Parameters<typeof mainSeries.setData>[0]);
             volumeSeries.setData(existingCandles.map(c => ({
                 time: c.time as UTCTimestamp,
-                value: c.volume,
+                value: Number.isFinite(c.volume) ? c.volume : 0,
                 color: c.close >= c.open ? 'rgba(38,166,154,0.35)' : 'rgba(239,83,80,0.35)'
             })));
         }
@@ -741,7 +743,7 @@ function Chart() {
         seriesRef.current.candle.setData(currentCandles.map(formatCandleData));
         seriesRef.current.volume.setData(currentCandles.map(c => ({
             time: c.time as UTCTimestamp,
-            value: c.volume,
+            value: Number.isFinite(c.volume) ? c.volume : 0,
             color: c.close >= c.open ? 'rgba(38, 166, 154, 0.5)' : 'rgba(239, 83, 80, 0.5)',
         })));
 
@@ -793,7 +795,9 @@ function Chart() {
 
             const compareCandlesData = compareCandles[sym];
             if (compareCandlesData && compareCandlesData.length > 0) {
-                const lineData = compareCandlesData.map(c => ({ time: c.time as UTCTimestamp, value: c.close }));
+                const lineData = compareCandlesData
+                    .map(c => (!Number.isFinite(c.close) ? null : { time: c.time as UTCTimestamp, value: c.close }))
+                    .filter((p): p is { time: UTCTimestamp; value: number } => p !== null);
                 // Eliminate duplicates by time
                 const deduped: { time: UTCTimestamp, value: number }[] = [];
                 for (const point of lineData) {
@@ -1061,7 +1065,7 @@ function Chart() {
             seriesRef.current.candle.setData(candles.map(formatCandleData));
             seriesRef.current.volume.setData(candles.map(c => ({
                 time: c.time as UTCTimestamp,
-                value: c.volume,
+                value: Number.isFinite(c.volume) ? c.volume : 0,
                 color: c.close >= c.open ? 'rgba(38, 166, 154, 0.5)' : 'rgba(239, 83, 80, 0.5)',
             })));
             lastSymbolRef.current = currentSymbol;
@@ -1073,7 +1077,7 @@ function Chart() {
             seriesRef.current.candle.update(formatted);
             seriesRef.current.volume.update({
                 time: latestCandle.time as UTCTimestamp,
-                value: latestCandle.volume,
+                value: Number.isFinite(latestCandle.volume) ? latestCandle.volume : 0,
                 color: latestCandle.close >= latestCandle.open ? 'rgba(38, 166, 154, 0.5)' : 'rgba(239, 83, 80, 0.5)',
             });
         } catch (e) {
@@ -1095,7 +1099,7 @@ function Chart() {
             values
                 .map((value, idx) => {
                     const candle = candles[idx];
-                    if (value == null || !candle) return null;
+                    if (value == null || !Number.isFinite(value) || !candle) return null;
                     return { time: candle.time as UTCTimestamp, value };
                 })
                 .filter((point): point is { time: UTCTimestamp; value: number } => point !== null)
@@ -1212,15 +1216,15 @@ function Chart() {
             histogram.setData(
                 macdValues.histogram
                     .map((value, idx) => (
-                        value == null
+                        value == null || !Number.isFinite(value)
                             ? null
                             : {
                                 time: candles[idx].time as UTCTimestamp,
-                                value,
-                                color: value >= 0 ? 'rgba(38,166,154,0.5)' : 'rgba(239,83,80,0.5)',
+                                value: value as number,
+                                color: value >= 0 ? 'rgba(38, 166, 154, 0.5)' : 'rgba(239, 83, 80, 0.5)',
                             }
                     ))
-                    .filter((point): point is { time: UTCTimestamp; value: number; color: string } => point !== null)
+                    .filter((p): p is { time: UTCTimestamp; value: number; color: string } => p !== null)
             );
 
             addLineIndicator(macdLine);
@@ -1267,9 +1271,9 @@ function Chart() {
         if (enabledIndicators.includes('supertrend')) {
             const st = calculateSupertrend(candles, 10, 3);
             const data = st.supertrend
-                .map((value, idx) => value == null ? null : {
+                .map((value, idx) => (value == null || !Number.isFinite(value)) ? null : {
                     time: candles[idx].time as UTCTimestamp,
-                    value,
+                    value: value as number,
                     color: st.direction[idx] === 1 ? '#4ade80' : '#ef4444',
                 })
                 .filter((p): p is { time: UTCTimestamp; value: number; color: string } => p !== null);
@@ -1505,7 +1509,7 @@ function Chart() {
             chart.priceScale(scaleId).applyOptions({ borderColor: '#2a2e39', scaleMargins: { top: 0.78, bottom: 0.02 } });
             histogram.setData(
                 aoValues
-                    .map((value, idx) => value == null ? null : { time: candles[idx].time as UTCTimestamp, value, color: value >= 0 ? 'rgba(38,166,154,0.7)' : 'rgba(239,83,80,0.7)' })
+                    .map((value, idx) => (value == null || !Number.isFinite(value)) ? null : { time: candles[idx].time as UTCTimestamp, value: value as number, color: value >= 0 ? 'rgba(38,166,154,0.7)' : 'rgba(239,83,80,0.7)' })
                     .filter((p): p is { time: UTCTimestamp; value: number; color: string } => p !== null)
             );
             addHistogramIndicator(histogram);
@@ -1553,12 +1557,11 @@ function Chart() {
         <div className="chart-root">
             {/* Main chart area */}
             <div className="chart-body">
-                <ChartToolbar />
                 <div className="chart-canvas-wrap">
                     {/* OHLCV overlay floats on top of chart */}
-                    <OHLCVOverlay />
-                    <CompareOverlay />
-                    <IndicatorsOverlay />
+                    <OHLCVOverlay paneId={paneId} />
+                    <CompareOverlay paneId={paneId} />
+                    <IndicatorsOverlay paneId={paneId} />
                     <DrawingOverlay chartRef={chartRef} seriesRef={seriesRef} hideDrawings={drawingsHidden} />
                     <div
                         ref={chartContainerRef}
