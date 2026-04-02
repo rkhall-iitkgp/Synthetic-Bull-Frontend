@@ -94,15 +94,31 @@ useMarketStore.subscribe((state, prevState) => {
         });
     }
 
-    // 2. Handle current symbol/timeframe changes (including single pane property changes)
-    if (state.currentSymbol !== prevState.currentSymbol || state.timeframe !== prevState.timeframe) {
-        candleWorker.postMessage({
-            type: 'INIT',
-            payload: { timeframeSec: state.timeframe, symbol: state.currentSymbol }
-        });
-
-        // Rebuild compare candles at the new timeframe or after symbol switches.
-        state.compareSymbols.forEach((sym) => requestCompareHistory(sym));
+    // 2. Handle current symbol/timeframe changes
+    if (state.layoutId === 'l1') {
+        // Single-pane: react to global state changes
+        if (state.currentSymbol !== prevState.currentSymbol || state.timeframe !== prevState.timeframe) {
+            candleWorker.postMessage({
+                type: 'INIT',
+                payload: { timeframeSec: state.timeframe, symbol: state.currentSymbol }
+            });
+            state.compareSymbols.forEach((sym) => requestCompareHistory(sym));
+        }
+    } else {
+        // Multi-pane: react to individual paneConfig changes, not global timeframe
+        for (const [paneId, config] of Object.entries(state.paneConfigs)) {
+            const prevConfig = prevState.paneConfigs[paneId];
+            if (!prevConfig || config.symbol !== prevConfig.symbol || config.timeframe !== prevConfig.timeframe) {
+                candleWorker.postMessage({
+                    type: 'INIT',
+                    payload: { timeframeSec: config.timeframe, symbol: config.symbol }
+                });
+            }
+        }
+        // Rebuild compare candles when active pane's context changes
+        if (state.currentSymbol !== prevState.currentSymbol) {
+            state.compareSymbols.forEach((sym) => requestCompareHistory(sym));
+        }
     }
 
     // 3. Handle replay mode transitions

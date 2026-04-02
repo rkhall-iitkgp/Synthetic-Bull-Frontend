@@ -324,6 +324,7 @@ interface MarketState {
     activePaneId: string;
     paneConfigs: Record<string, PaneConfig>;
     paneCandles: Record<string, Candle[]>; // Store candles per pane
+    paneHistorySequence: Record<string, number>; // Per-pane history load counter
 
     // Notification State
     notifications: { id: string; message: string; type: 'success' | 'error' | 'info' }[];
@@ -492,6 +493,7 @@ const useMarketStore = create<MarketState>((set) => ({
         'c': [],
         'd': [],
     },
+    paneHistorySequence: { 'a': 0, 'b': 0, 'c': 0, 'd': 0 },
 
     notifications: [],
 
@@ -536,13 +538,15 @@ const useMarketStore = create<MarketState>((set) => ({
 
         // Update all matching panes (Symbol + Timeframe must match)
         const newPaneCandles = { ...state.paneCandles };
+        const newPaneHistorySeq = { ...state.paneHistorySequence };
         for (const [paneId, config] of Object.entries(state.paneConfigs)) {
             if (config.symbol === symbol && config.timeframe === timeframe) {
                 newPaneCandles[paneId] = safeCandles;
+                newPaneHistorySeq[paneId] = (newPaneHistorySeq[paneId] || 0) + 1;
             }
         }
 
-        const update: Partial<MarketState> = { paneCandles: newPaneCandles };
+        const update: Partial<MarketState> = { paneCandles: newPaneCandles, paneHistorySequence: newPaneHistorySeq };
 
         // Only update global state if this belongs to the current global context
         if (symbol === state.currentSymbol && timeframe === state.timeframe) {

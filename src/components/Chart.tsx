@@ -448,7 +448,7 @@ function Chart({ paneId }: { paneId?: string }) {
 
 
     const candles = useMarketStore(s => (s.layoutId !== 'l1' && paneId && s.paneConfigs[paneId] && s.paneCandles[paneId]?.length > 0) ? s.paneCandles[paneId] : s.candles);
-    const historySequence = useMarketStore(s => s.historySequence);
+    const historySequence = useMarketStore(s => (s.layoutId !== 'l1' && paneId) ? (s.paneHistorySequence[paneId] || 0) : s.historySequence);
     const enabledIndicators = useMarketStore((s) => s.layoutId === 'l1' || !paneId ? s.enabledIndicators : s.paneConfigs[paneId]?.enabledIndicators || s.enabledIndicators);
     const chartType = useMarketStore(s => s.layoutId === 'l1' || !paneId ? s.chartType : s.paneConfigs[paneId]?.chartType || s.chartType);
     const currentSymbol = useMarketStore(s => s.layoutId === 'l1' || !paneId ? s.currentSymbol : s.paneConfigs[paneId]?.symbol || s.currentSymbol);
@@ -697,7 +697,8 @@ function Chart({ paneId }: { paneId?: string }) {
         seriesRef.current = { candle: mainSeries as ISeriesApi<"Candlestick"> | ISeriesApi<"Line"> | ISeriesApi<"Area"> | ISeriesApi<"Baseline">, volume: volumeSeries };
 
         // Init with existing candles if component mounts after websocket already received them
-        const existingCandles = useMarketStore.getState().candles;
+        const _s = useMarketStore.getState();
+        const existingCandles = (_s.layoutId !== 'l1' && paneId && _s.paneCandles[paneId]?.length > 0) ? _s.paneCandles[paneId] : _s.candles;
         if (existingCandles.length > 0 && Array.isArray(existingCandles)) {
             mainSeries.setData(existingCandles.map(formatCandleData) as Parameters<typeof mainSeries.setData>[0]);
             volumeSeries.setData(existingCandles.map(c => ({
@@ -732,7 +733,8 @@ function Chart({ paneId }: { paneId?: string }) {
     // Batch data sync — triggers only on history load/clear (historySequence), not individual candle updates
     useEffect(() => {
         if (!seriesRef.current) return;
-        const currentCandles = useMarketStore.getState().candles;
+        const _s = useMarketStore.getState();
+        const currentCandles = (_s.layoutId !== 'l1' && paneId && _s.paneCandles[paneId]?.length > 0) ? _s.paneCandles[paneId] : _s.candles;
 
         if (currentCandles.length === 0) {
             seriesRef.current.candle.setData([]);
@@ -1051,7 +1053,7 @@ function Chart({ paneId }: { paneId?: string }) {
 
 
     // Real-time updates
-    const latestCandle = useMarketStore(s => s.latestCandle);
+    const latestCandle = useMarketStore(s => (s.layoutId !== 'l1' && paneId && s.paneCandles[paneId]?.length > 0) ? s.paneCandles[paneId][s.paneCandles[paneId].length - 1] : s.latestCandle);
     useEffect(() => {
         if (!seriesRef.current || !latestCandle || !chartRef.current) return;
 
