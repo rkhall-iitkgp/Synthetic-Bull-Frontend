@@ -25,6 +25,18 @@ export default function Terminal() {
     }, []);
 
     useEffect(() => {
+        const openBotPanel = () => {
+            setSidebarTab('bot');
+            setIsRightPanelOpen(true);
+        };
+
+        window.addEventListener('open-bot-panel', openBotPanel as EventListener);
+        return () => {
+            window.removeEventListener('open-bot-panel', openBotPanel as EventListener);
+        };
+    }, []);
+
+    useEffect(() => {
         const symbol = searchParams.get('symbol');
         if (symbol) {
             setCurrentSymbol(symbol.toUpperCase());

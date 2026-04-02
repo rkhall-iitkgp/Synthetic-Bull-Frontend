@@ -283,6 +283,8 @@ interface MarketState {
     isReplayMode: boolean;
     replayCandles: Candle[];
     replayIndex: number;
+    replayStartIndex: number;
+    replayEndIndex: number;
     replaySpeed: number; // updates per second (e.g. 1, 3, 5)
     isReplaying: boolean;
     _savedFullHistory?: Candle[];
@@ -338,6 +340,7 @@ interface MarketState {
     checkAlerts: (symbol: string, currentPrice: number, previousPrice: number) => void;
 
     // Replay Actions
+    startReplayRange: (startIndex: number, endIndex: number, allCandles: Candle[]) => void;
     startReplay: (startIndex: number, allCandles: Candle[]) => void;
     stopReplay: () => void;
     setIsReplaying: (playing: boolean) => void;
@@ -399,6 +402,8 @@ const useMarketStore = create<MarketState>((set) => ({
     isReplayMode: false,
     replayCandles: [],
     replayIndex: 0,
+    replayStartIndex: 0,
+    replayEndIndex: 0,
     replaySpeed: 1,
     isReplaying: false,
 
@@ -783,22 +788,35 @@ const useMarketStore = create<MarketState>((set) => ({
     })),
 
     // Replay implementaton
-    startReplay: (startIndex, allCandles) => set((state) => {
-        const initialCandles = allCandles.slice(0, startIndex + 1);
-        const futureCandles = allCandles.slice(startIndex + 1);
+    startReplayRange: (startIndex, endIndex, allCandles) => set((state) => {
+        if (!allCandles.length) return state;
+
+        const maxIndex = allCandles.length - 1;
+        const clampedStart = Math.max(0, Math.min(startIndex, maxIndex));
+        const clampedEnd = Math.max(clampedStart, Math.min(endIndex, maxIndex));
+
+        const initialCandles = allCandles.slice(0, clampedStart + 1);
+        const futureCandles = allCandles.slice(clampedStart + 1, clampedEnd + 1);
         return {
             isReplayMode: true,
             isReplaying: false,
             replayIndex: 0,
+            replayStartIndex: clampedStart,
+            replayEndIndex: clampedEnd,
             replayCandles: futureCandles,
             candles: initialCandles,
             latestCandle: initialCandles[initialCandles.length - 1] || null,
-        // Save the full history so we can restore it when replay closes!
-        _savedFullHistory: allCandles,
+            // Save the full history so we can restore it when replay closes.
+            _savedFullHistory: allCandles,
             historySequence: state.historySequence + 1,
             activeTool: 'crosshair', // reset tool
         };
     }),
+
+    startReplay: (startIndex, allCandles) => {
+        const endIndex = Math.max(0, allCandles.length - 1);
+        useMarketStore.getState().startReplayRange(startIndex, endIndex, allCandles);
+    },
 
     stopReplay: () => set((state) => {
         if (!state.isReplayMode) return state; // Safety guard if we cancel before clicking the chart
@@ -810,6 +828,8 @@ const useMarketStore = create<MarketState>((set) => ({
             isReplaying: false,
             replayCandles: [],
             replayIndex: 0,
+            replayStartIndex: 0,
+            replayEndIndex: 0,
             candles: restoredCandles,
             latestCandle: restoredCandles[restoredCandles.length - 1] || null,
             _savedFullHistory: undefined,
@@ -820,8 +840,7 @@ const useMarketStore = create<MarketState>((set) => ({
     setIsReplaying: (playing) => set((state) => {
         if (playing && state.isReplayMode && state.replayIndex >= state.replayCandles.length) {
             const all = state._savedFullHistory || [];
-            const future = state.replayCandles;
-            const init = all.slice(0, all.length - future.length);
+            const init = all.slice(0, state.replayStartIndex + 1);
             return {
                 isReplaying: true,
                 replayIndex: 0,

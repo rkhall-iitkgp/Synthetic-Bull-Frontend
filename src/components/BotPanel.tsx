@@ -10,19 +10,35 @@ import {
   RefreshCw,
   BarChart3,
   Timer,
+  CalendarClock,
+  History,
+  SlidersHorizontal,
+  Sparkles,
 } from 'lucide-react';
 import {
+  cancelSessionRun,
+  createReplayRunFromCandles,
+  createSessionRunFromTemplate,
+  createSessionTemplate,
   fetchBots,
   fetchBotKPI,
   fetchBotPortfolio,
   fetchBotSessions,
+  fetchOrchestratorHealth,
+  fetchReplayControl,
+  fetchSessionRuns,
+  startSessionRunNow,
   startLapSession,
   stopLapSession,
   type Bot as AdminBot,
   type BotKPIResponse,
   type BotSession,
   type BotPortfolio,
+  type OrchestratorHealth,
+  type ReplayControl,
+  type SessionRun,
 } from '../services/api';
+import useMarketStore from '../store/useMarketStore';
 
 const POLL_MS = 3000;
 const BOT_COMPARE_SELECTED_STORAGE_KEY = 'nextbull.botCompare.selectedBotIds';
@@ -62,6 +78,25 @@ function parseErrorMessage(err: unknown): string {
   return err.message;
 }
 
+function formatDateTime(value?: string | null): string {
+  if (!value) return '-';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleString();
+}
+
+function toIsoInput(value: string): string | null {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toISOString();
+}
+
+function toLocalInputValue(value: Date): string {
+  const copy = new Date(value.getTime() - value.getTimezoneOffset() * 60000);
+  return copy.toISOString().slice(0, 16);
+}
+
 function formatDuration(totalSeconds: number): string {
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
@@ -99,6 +134,7 @@ type BotRuntime = {
 };
 
 type ActionPhase = 'idle' | 'starting' | 'stopping';
+type ExecutionMode = 'live' | 'scheduled' | 'replay';
 
 const EMPTY_RUNTIME: BotRuntime = {
   kpi: null,
@@ -109,14 +145,44 @@ const EMPTY_RUNTIME: BotRuntime = {
 };
 
 export default function BotPanel({ onClose }: { onClose?: () => void }) {
+  const candles = useMarketStore((s) => s.candles);
+  const currentSymbol = useMarketStore((s) => s.currentSymbol);
+  const timeframeSeconds = useMarketStore((s) => s.timeframe);
+  const isReplayMode = useMarketStore((s) => s.isReplayMode);
+  const isReplaying = useMarketStore((s) => s.isReplaying);
+  const replayIndex = useMarketStore((s) => s.replayIndex);
+  const replayCandles = useMarketStore((s) => s.replayCandles);
+  const replaySpeed = useMarketStore((s) => s.replaySpeed);
+  const setReplaySpeed = useMarketStore((s) => s.setReplaySpeed);
+  const startReplayRange = useMarketStore((s) => s.startReplayRange);
+  const setIsReplaying = useMarketStore((s) => s.setIsReplaying);
+  const stopReplayMode = useMarketStore((s) => s.stopReplay);
+
   const [bots, setBots] = useState<AdminBot[]>([]);
   const [query, setQuery] = useState('');
   const [selectedBotIds, setSelectedBotIds] = useState<string[]>(readStoredSelectedBotIds);
+  const [executionMode, setExecutionMode] = useState<ExecutionMode>('live');
   const [running, setRunning] = useState(false);
   const [loadingBots, setLoadingBots] = useState(true);
   const [actionPhase, setActionPhase] = useState<ActionPhase>('idle');
   const [apiConnected, setApiConnected] = useState<boolean | null>(null);
   const [panelError, setPanelError] = useState<string | null>(null);
+  const [orchestratorHealth, setOrchestratorHealth] = useState<OrchestratorHealth | null>(null);
+  const [recentRuns, setRecentRuns] = useState<SessionRun[]>([]);
+  const [loadingRuns, setLoadingRuns] = useState(false);
+  const [scheduleStart, setScheduleStart] = useState(() => toLocalInputValue(new Date(Date.now() + 5 * 60 * 1000)));
+  const [scheduleEnd, setScheduleEnd] = useState(() => toLocalInputValue(new Date(Date.now() + 35 * 60 * 1000)));
+  const [scheduling, setScheduling] = useState(false);
+  const [scheduleNotice, setScheduleNotice] = useState<string | null>(null);
+  const [runActionBusyId, setRunActionBusyId] = useState<string | null>(null);
+
+  const [replayRangeStart, setReplayRangeStart] = useState(0);
+  const [replayRangeEnd, setReplayRangeEnd] = useState(0);
+  const [replayBusy, setReplayBusy] = useState(false);
+  const [backendReplayRun, setBackendReplayRun] = useState<ReplayControl | null>(null);
+  const [backendReplayRunId, setBackendReplayRunId] = useState<string | null>(null);
+  const replayRangeInitializedRef = useRef(false);
+
   const [clockTick, setClockTick] = useState(0);
   const [runtimeByBot, setRuntimeByBot] = useState<Record<string, BotRuntime>>({});
   const runtimeRef = useRef<Record<string, BotRuntime>>({});
@@ -187,6 +253,29 @@ export default function BotPanel({ onClose }: { onClose?: () => void }) {
     return bots.filter((b) => b.name.toLowerCase().includes(q) || b.id.toLowerCase().includes(q));
   }, [bots, query]);
 
+  const maxReplayIndex = useMemo(() => Math.max(0, candles.length - 1), [candles.length]);
+  const replaySpan = useMemo(() => {
+    if (candles.length <= 1) {
+      return {
+        valid: false,
+        points: 0,
+        startLabel: '-',
+        endLabel: '-',
+      };
+    }
+
+    const safeStart = Math.max(0, Math.min(replayRangeStart, maxReplayIndex));
+    const safeEnd = Math.max(safeStart, Math.min(replayRangeEnd, maxReplayIndex));
+    return {
+      valid: safeEnd > safeStart,
+      points: Math.max(0, safeEnd - safeStart),
+      startLabel: formatDateTime(new Date(candles[safeStart].time * 1000).toISOString()),
+      endLabel: formatDateTime(new Date(candles[safeEnd].time * 1000).toISOString()),
+    };
+  }, [candles, maxReplayIndex, replayRangeStart, replayRangeEnd]);
+
+  const recentRunsForSelection = useMemo(() => recentRuns.slice(0, 8), [recentRuns]);
+
   useEffect(() => {
     if (!selectorOpen) return;
 
@@ -206,6 +295,38 @@ export default function BotPanel({ onClose }: { onClose?: () => void }) {
     }
   }, [running]);
 
+  useEffect(() => {
+    const openReplayPlanner = () => {
+      setExecutionMode('replay');
+    };
+
+    window.addEventListener('open-replay-planner', openReplayPlanner as EventListener);
+    return () => {
+      window.removeEventListener('open-replay-planner', openReplayPlanner as EventListener);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (candles.length <= 1) {
+      replayRangeInitializedRef.current = false;
+      setReplayRangeStart(0);
+      setReplayRangeEnd(0);
+      return;
+    }
+
+    const maxIndex = candles.length - 1;
+    if (!replayRangeInitializedRef.current) {
+      const defaultStart = Math.max(0, maxIndex - 180);
+      setReplayRangeStart(defaultStart);
+      setReplayRangeEnd(maxIndex);
+      replayRangeInitializedRef.current = true;
+      return;
+    }
+
+    setReplayRangeStart((prev) => Math.min(prev, Math.max(0, maxIndex - 1)));
+    setReplayRangeEnd((prev) => Math.min(Math.max(prev, 1), maxIndex));
+  }, [candles.length]);
+
   const loadBots = async () => {
     setLoadingBots(true);
     try {
@@ -222,9 +343,55 @@ export default function BotPanel({ onClose }: { onClose?: () => void }) {
     }
   };
 
+  const loadScheduledContext = async () => {
+    setLoadingRuns(true);
+    try {
+      const [health, runs] = await Promise.all([
+        fetchOrchestratorHealth(),
+        fetchSessionRuns(),
+      ]);
+      setOrchestratorHealth(health);
+      setRecentRuns(runs);
+      setApiConnected(true);
+    } catch (err) {
+      setApiConnected(false);
+      setPanelError(parseErrorMessage(err));
+    } finally {
+      setLoadingRuns(false);
+    }
+  };
+
   useEffect(() => {
     void loadBots();
   }, []);
+
+  useEffect(() => {
+    if (executionMode !== 'scheduled') return;
+    void loadScheduledContext();
+  }, [executionMode]);
+
+  useEffect(() => {
+    if (!backendReplayRunId) {
+      setBackendReplayRun(null);
+      return;
+    }
+
+    const loadControl = async () => {
+      try {
+        const control = await fetchReplayControl(backendReplayRunId);
+        setBackendReplayRun(control);
+      } catch {
+        setBackendReplayRun(null);
+      }
+    };
+
+    void loadControl();
+    const timer = setInterval(() => {
+      void loadControl();
+    }, 2000);
+
+    return () => clearInterval(timer);
+  }, [backendReplayRunId]);
 
   useEffect(() => {
     setRuntimeByBot((prev) => {
@@ -429,6 +596,131 @@ export default function BotPanel({ onClose }: { onClose?: () => void }) {
     setSelectedBotIds([]);
   };
 
+  const handleCreateScheduledRun = async () => {
+    if (selectedBotIds.length === 0) {
+      setPanelError('Select at least one bot before scheduling a run.');
+      return;
+    }
+
+    const startIso = toIsoInput(scheduleStart);
+    const endIso = toIsoInput(scheduleEnd);
+    if (!startIso || !endIso) {
+      setPanelError('Choose valid start and end times for the scheduled run.');
+      return;
+    }
+    if (new Date(endIso).getTime() <= new Date(startIso).getTime()) {
+      setPanelError('Scheduled end time must be after start time.');
+      return;
+    }
+
+    setScheduling(true);
+    setPanelError(null);
+    setScheduleNotice(null);
+
+    try {
+      const template = await createSessionTemplate({
+        name: `Terminal Scheduled ${new Date().toLocaleString()}`,
+        mode: 'live',
+        timezone: 'UTC',
+        schedule_start_time: startIso,
+        schedule_end_time: endIso,
+      });
+
+      const run = await createSessionRunFromTemplate({
+        template_id: template.id,
+        scheduled_start_time: startIso,
+        scheduled_end_time: endIso,
+        bot_ids: selectedBotIds,
+      });
+
+      setScheduleNotice(`Scheduled run created (${run.status})`);
+      await loadScheduledContext();
+    } catch (err) {
+      setPanelError(parseErrorMessage(err));
+    } finally {
+      setScheduling(false);
+    }
+  };
+
+  const handleRunAction = async (runId: string, action: 'start-now' | 'cancel') => {
+    setRunActionBusyId(runId);
+    setPanelError(null);
+    setScheduleNotice(null);
+    try {
+      if (action === 'start-now') {
+        await startSessionRunNow(runId);
+      } else {
+        await cancelSessionRun(runId);
+      }
+      await loadScheduledContext();
+    } catch (err) {
+      setPanelError(parseErrorMessage(err));
+    } finally {
+      setRunActionBusyId(null);
+    }
+  };
+
+  const handleLaunchReplayRange = async () => {
+    if (selectedBotIds.length === 0) {
+      setPanelError('Select at least one bot for replay trading.');
+      return;
+    }
+
+    if (candles.length <= 1) {
+      setPanelError('Replay needs historical candles first. Wait for chart history to load.');
+      return;
+    }
+
+    const safeStart = Math.max(0, Math.min(replayRangeStart, maxReplayIndex));
+    const safeEnd = Math.max(safeStart, Math.min(replayRangeEnd, maxReplayIndex));
+    if (safeEnd <= safeStart) {
+      setPanelError('Replay range should have a distinct start and end.');
+      return;
+    }
+
+    setReplayBusy(true);
+    setPanelError(null);
+    try {
+      const health = await fetchOrchestratorHealth();
+      if (!health.orchestrator_enabled || !health.replay_enabled) {
+        setPanelError(
+          'Replay runtime is disabled on backend. Enable ENABLE_SESSION_ORCHESTRATOR=1 and ENABLE_REPLAY_SESSIONS=1.'
+        );
+        return;
+      }
+
+      const created = await createReplayRunFromCandles({
+        symbol: currentSymbol,
+        timeframe_seconds: timeframeSeconds,
+        replay_speed: replaySpeed,
+        start_index: safeStart,
+        end_index: safeEnd,
+        bot_ids: selectedBotIds,
+        candles: candles.map((candle) => ({
+          time: candle.time,
+          open: candle.open,
+          high: candle.high,
+          low: candle.low,
+          close: candle.close,
+          volume: candle.volume,
+        })),
+        name: `${currentSymbol} replay ${new Date().toLocaleTimeString()}`,
+        timezone: 'UTC',
+      });
+
+      setBackendReplayRunId(created.run_id);
+      startReplayRange(safeStart, safeEnd, candles);
+      setIsReplaying(true);
+      setScheduleNotice(
+        `Replay run ${created.run_id.slice(0, 8)} launched for ${created.candles_used} candles (${currentSymbol} @ ${timeframeSeconds}s).`
+      );
+    } catch (err) {
+      setPanelError(parseErrorMessage(err));
+    } finally {
+      setReplayBusy(false);
+    }
+  };
+
   const handleStart = async () => {
     if (selectedBotIds.length === 0) {
       setPanelError('Select at least one bot to compare.');
@@ -620,8 +912,8 @@ export default function BotPanel({ onClose }: { onClose?: () => void }) {
             <BarChart3 size={14} className="text-accent" />
           </div>
           <div className="min-w-0">
-            <div className="text-xs font-bold uppercase tracking-[0.13em] text-text-primary">Bot Compare</div>
-            <div className="text-[10px] text-text-secondary truncate">Run synced lap sessions and compare performance.</div>
+            <div className="text-xs font-bold uppercase tracking-[0.13em] text-text-primary">Bot Execution Studio</div>
+            <div className="text-[10px] text-text-secondary truncate">Live, scheduled, and replay flows from one panel.</div>
           </div>
           {running && (
             <span className="rounded border border-bull/30 bg-bull/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.08em] text-bull">
@@ -648,6 +940,56 @@ export default function BotPanel({ onClose }: { onClose?: () => void }) {
             </div>
           )}
 
+          {scheduleNotice && (
+            <div className="rounded-lg border border-accent/25 bg-accent/10 px-3 py-2 text-xs text-accent">
+              {scheduleNotice}
+            </div>
+          )}
+
+          <section className={sectionShellClass}>
+            <div className="mb-2 flex items-center justify-between">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-text-secondary">
+                Execution Studio
+              </div>
+              <span className="rounded border border-accent/30 bg-accent/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-accent">
+                Terminal-linked
+              </span>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => setExecutionMode('live')}
+                className={`tv-glass-btn py-2 text-[11px] font-semibold uppercase tracking-[0.08em] cursor-pointer ${executionMode === 'live' ? 'tv-glass-btn-accent' : ''}`}
+              >
+                <Sparkles size={12} />
+                Live
+              </button>
+              <button
+                type="button"
+                onClick={() => setExecutionMode('scheduled')}
+                className={`tv-glass-btn py-2 text-[11px] font-semibold uppercase tracking-[0.08em] cursor-pointer ${executionMode === 'scheduled' ? 'tv-glass-btn-accent' : ''}`}
+              >
+                <CalendarClock size={12} />
+                Scheduled
+              </button>
+              <button
+                type="button"
+                onClick={() => setExecutionMode('replay')}
+                className={`tv-glass-btn py-2 text-[11px] font-semibold uppercase tracking-[0.08em] cursor-pointer ${executionMode === 'replay' ? 'tv-glass-btn-accent' : ''}`}
+              >
+                <History size={12} />
+                Replay
+              </button>
+            </div>
+
+            <div className="mt-2 rounded-lg border border-border-subtle/70 bg-bg-terminal/50 px-3 py-2 text-[11px] text-text-secondary">
+              {executionMode === 'live' && 'Run live lap sessions and compare KPI in real time.'}
+              {executionMode === 'scheduled' && 'Queue bots for a future session window, then trigger or cancel runs.'}
+              {executionMode === 'replay' && 'Train on past chart data by selecting start and end points before launch.'}
+            </div>
+          </section>
+
           <section className={sectionShellClass}>
             <div className="mb-2 flex items-center justify-between">
               <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-text-secondary">
@@ -663,7 +1005,7 @@ export default function BotPanel({ onClose }: { onClose?: () => void }) {
                 type="button"
                 disabled={running || loadingBots}
                 onClick={() => setSelectorOpen((prev) => !prev)}
-                className="flex w-full items-center justify-between gap-3 rounded-lg border border-white/14 bg-white/[0.04] px-3 py-2 text-left backdrop-blur-md transition-colors hover:border-white/24 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
+                className="flex w-full items-center justify-between gap-3 rounded-lg border border-white/14 bg-white/4 px-3 py-2 text-left backdrop-blur-md transition-colors hover:border-white/24 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
               >
                 <div className="min-w-0">
                   <div className="text-[10px] font-semibold uppercase tracking-[0.09em] text-text-secondary">
@@ -680,7 +1022,7 @@ export default function BotPanel({ onClose }: { onClose?: () => void }) {
               {selectorOpen && !running && (
                 <div className="absolute z-40 mt-2 w-full overflow-hidden rounded-xl border border-white/12 bg-linear-to-b from-[#0e1120ee] via-bg-elevated/95 to-bg-terminal/95 shadow-[0_14px_32px_rgba(8,12,20,0.55)] backdrop-blur-xl">
                   <div className="border-b border-border-subtle/80 p-2">
-                    <div className="flex items-center gap-2 rounded-md border border-white/12 bg-white/[0.04] px-2.5 py-2 backdrop-blur-md">
+                    <div className="flex items-center gap-2 rounded-md border border-white/12 bg-white/4 px-2.5 py-2 backdrop-blur-md">
                       <Search size={13} className="text-text-secondary" />
                       <input
                         value={query}
@@ -728,7 +1070,7 @@ export default function BotPanel({ onClose }: { onClose?: () => void }) {
                             className={`mb-1 flex w-full items-start gap-2 rounded-md border px-2 py-2 text-left transition-colors backdrop-blur-sm cursor-pointer ${
                               selected
                                 ? 'border-accent/36 bg-accent/10'
-                                : 'border-transparent bg-white/[0.025] hover:border-white/14 hover:bg-white/[0.06]'
+                                : 'border-transparent bg-white/2.5 hover:border-white/14 hover:bg-white/6'
                             }`}
                           >
                             <span
@@ -786,72 +1128,334 @@ export default function BotPanel({ onClose }: { onClose?: () => void }) {
             </div>
           </section>
 
-          <section className={sectionShellClass}>
-            <div className="mb-2 flex items-center justify-between">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-text-secondary">
-                Step 2 · Lap Controls
+          {executionMode === 'live' && (
+            <section className={sectionShellClass}>
+              <div className="mb-2 flex items-center justify-between">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-text-secondary">
+                  Step 2 · Live Lap Controls
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void syncActiveLapsForSelection(selectedBotIds)}
+                  disabled={actionLoading}
+                  className="tv-glass-btn px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-accent hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
+                >
+                  <RefreshCw size={11} />
+                  Sync
+                </button>
               </div>
+
+              <div className="rounded-lg border border-border-subtle/70 bg-bg-terminal/50 px-3 py-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-text-secondary">
+                    <Timer size={13} className="text-accent" />
+                    Lap Timer
+                  </div>
+                  <div className={`text-base font-mono font-bold ${running ? 'text-bull' : 'text-text-primary'}`}>
+                    {lapTimerLabel}
+                  </div>
+                </div>
+                <div className="mt-1 text-[10px] text-text-secondary">
+                  {running
+                    ? 'Live polling every 3 seconds'
+                    : hasLapSnapshot
+                      ? 'Showing the last lap snapshot'
+                      : 'Start a lap to collect comparable KPI'}
+                </div>
+              </div>
+
+              <div className="mt-2.5 grid grid-cols-2 gap-2">
+                <button
+                  onClick={handleStart}
+                  disabled={running || actionLoading || selectedBotIds.length === 0}
+                  className="tv-glass-btn w-full py-2.5 text-xs font-semibold uppercase tracking-[0.07em] text-bull border-bull/55 bg-linear-to-br from-bull/28 to-bull/14 hover:from-bull/35 hover:to-bull/18 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+                >
+                  <Play size={13} />
+                  Start
+                </button>
+                <button
+                  onClick={handleStop}
+                  disabled={!running || actionLoading}
+                  className="tv-glass-btn tv-glass-btn-danger w-full py-2.5 text-xs font-semibold uppercase tracking-[0.07em] text-bear disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+                >
+                  <Square size={13} />
+                  Stop
+                </button>
+              </div>
+
+              <div className="mt-2 flex items-center justify-between text-[10px] text-text-secondary font-mono">
+                <span>{startDisabledReason ? `Start: ${startDisabledReason}` : 'Start: ready'}</span>
+                <span>{stopDisabledReason ? `Stop: ${stopDisabledReason}` : 'Stop: ready'}</span>
+              </div>
+
+              {actionLoading && (
+                <div className="mt-2 rounded-lg border border-border-subtle/60 bg-bg-terminal/50 px-3 py-2 text-[10px] font-mono uppercase tracking-[0.08em] text-text-secondary">
+                  {actionPhase === 'starting' ? 'Starting lap session...' : 'Stopping lap session...'}
+                </div>
+              )}
+            </section>
+          )}
+
+          {executionMode === 'scheduled' && (
+            <section className={sectionShellClass}>
+              <div className="mb-2 flex items-center justify-between">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-text-secondary">
+                  Step 2 · Scheduled Session
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void loadScheduledContext()}
+                  disabled={loadingRuns}
+                  className="tv-glass-btn px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-accent hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
+                >
+                  <RefreshCw size={11} className={loadingRuns ? 'animate-spin' : ''} />
+                  Refresh
+                </button>
+              </div>
+
+              <div className="mb-2 rounded-lg border border-border-subtle/70 bg-bg-terminal/50 px-3 py-2">
+                <div className="text-[10px] uppercase tracking-[0.08em] text-text-secondary">Orchestrator status</div>
+                <div className="mt-1 flex items-center justify-between text-xs">
+                  <span className="text-text-primary">Scheduler</span>
+                  <span className={orchestratorHealth?.orchestrator_enabled ? 'text-bull' : 'text-bear'}>
+                    {orchestratorHealth?.orchestrator_enabled ? 'enabled' : 'disabled'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-2">
+                <label className="text-[10px] uppercase tracking-[0.08em] text-text-secondary">Start</label>
+                <input
+                  type="datetime-local"
+                  value={scheduleStart}
+                  onChange={(e) => setScheduleStart(e.target.value)}
+                  className="rounded-lg border border-white/14 bg-white/4 px-3 py-2 text-xs text-text-primary focus:outline-none focus:border-accent/45"
+                />
+                <label className="text-[10px] uppercase tracking-[0.08em] text-text-secondary">End</label>
+                <input
+                  type="datetime-local"
+                  value={scheduleEnd}
+                  onChange={(e) => setScheduleEnd(e.target.value)}
+                  className="rounded-lg border border-white/14 bg-white/4 px-3 py-2 text-xs text-text-primary focus:outline-none focus:border-accent/45"
+                />
+              </div>
+
               <button
                 type="button"
-                onClick={() => void syncActiveLapsForSelection(selectedBotIds)}
-                disabled={actionLoading}
-                className="tv-glass-btn px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-accent hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
+                onClick={() => void handleCreateScheduledRun()}
+                disabled={scheduling || selectedBotIds.length === 0}
+                className="mt-3 tv-glass-btn tv-glass-btn-accent w-full py-2.5 text-xs font-semibold uppercase tracking-[0.07em] disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
               >
-                <RefreshCw size={11} />
-                Sync
+                <CalendarClock size={13} />
+                {scheduling ? 'Scheduling...' : 'Schedule Live Run'}
               </button>
-            </div>
+            </section>
+          )}
 
-            <div className="rounded-lg border border-border-subtle/70 bg-bg-terminal/50 px-3 py-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-text-secondary">
-                  <Timer size={13} className="text-accent" />
-                  Lap Timer
+          {executionMode === 'scheduled' && (
+            <section className={sectionShellClass}>
+              <div className="mb-2 flex items-center justify-between">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-text-secondary">
+                  Recent Runs
                 </div>
-                <div className={`text-base font-mono font-bold ${running ? 'text-bull' : 'text-text-primary'}`}>
-                  {lapTimerLabel}
+                <span className="text-[10px] font-mono text-text-secondary">{recentRunsForSelection.length} shown</span>
+              </div>
+
+              {recentRunsForSelection.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-border-subtle bg-bg-terminal/40 px-3 py-4 text-center text-xs text-text-secondary">
+                  No scheduled runs yet.
                 </div>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {recentRunsForSelection.map((run) => (
+                    <div key={run.id} className="rounded-lg border border-border-subtle/70 bg-bg-terminal/45 px-3 py-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="truncate text-[11px] font-mono text-text-primary">{run.id}</div>
+                          <div className="text-[10px] text-text-secondary">{formatDateTime(run.scheduled_start_time)}</div>
+                        </div>
+                        <span className="rounded border border-white/12 bg-white/4 px-2 py-0.5 text-[10px] uppercase tracking-[0.08em] text-text-secondary">
+                          {run.status}
+                        </span>
+                      </div>
+
+                      <div className="mt-2 flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void handleRunAction(run.id, 'start-now')}
+                          disabled={runActionBusyId === run.id || !['scheduled'].includes(run.status)}
+                          className="tv-glass-btn px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.07em] cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <Play size={11} />
+                          Start now
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleRunAction(run.id, 'cancel')}
+                          disabled={runActionBusyId === run.id || ['completed', 'failed', 'cancelled'].includes(run.status)}
+                          className="tv-glass-btn tv-glass-btn-danger px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.07em] cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <Square size={11} />
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
+
+          {executionMode === 'replay' && (
+            <section className={sectionShellClass}>
+              <div className="mb-2 flex items-center justify-between">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-text-secondary">
+                  Step 2 · Replay Range
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (candles.length > 1) {
+                      setReplayRangeStart(Math.max(0, candles.length - 180));
+                      setReplayRangeEnd(candles.length - 1);
+                    }
+                  }}
+                  className="tv-glass-btn px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-accent hover:text-text-primary cursor-pointer"
+                >
+                  <RefreshCw size={11} />
+                  Reset Range
+                </button>
               </div>
-              <div className="mt-1 text-[10px] text-text-secondary">
-                {running
-                  ? 'Live polling every 3 seconds'
-                  : hasLapSnapshot
-                    ? 'Showing the last lap snapshot'
-                    : 'Start a lap to collect comparable KPI'}
+
+              <div className="rounded-lg border border-border-subtle/70 bg-bg-terminal/50 px-3 py-2 text-[11px] text-text-secondary">
+                Choose a historical window directly from loaded chart candles. Replay will run only inside this range.
               </div>
-            </div>
 
-            <div className="mt-2.5 grid grid-cols-2 gap-2">
-              <button
-                onClick={handleStart}
-                disabled={running || actionLoading || selectedBotIds.length === 0}
-                className="tv-glass-btn w-full py-2.5 text-xs font-semibold uppercase tracking-[0.07em] text-bull border-bull/55 bg-linear-to-br from-bull/28 to-bull/14 hover:from-bull/35 hover:to-bull/18 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
-              >
-                <Play size={13} />
-                Start
-              </button>
-              <button
-                onClick={handleStop}
-                disabled={!running || actionLoading}
-                className="tv-glass-btn tv-glass-btn-danger w-full py-2.5 text-xs font-semibold uppercase tracking-[0.07em] text-bear disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
-              >
-                <Square size={13} />
-                Stop
-              </button>
-            </div>
-
-            <div className="mt-2 flex items-center justify-between text-[10px] text-text-secondary font-mono">
-              <span>{startDisabledReason ? `Start: ${startDisabledReason}` : 'Start: ready'}</span>
-              <span>{stopDisabledReason ? `Stop: ${stopDisabledReason}` : 'Stop: ready'}</span>
-            </div>
-
-            {actionLoading && (
-              <div className="mt-2 rounded-lg border border-border-subtle/60 bg-bg-terminal/50 px-3 py-2 text-[10px] font-mono uppercase tracking-[0.08em] text-text-secondary">
-                {actionPhase === 'starting' ? 'Starting lap session...' : 'Stopping lap session...'}
+              <div className="mt-2 rounded-lg border border-border-subtle/70 bg-bg-terminal/50 px-3 py-2 text-[10px] font-mono text-text-secondary">
+                symbol: <span className="text-text-primary">{currentSymbol}</span>
+                <span className="mx-2">|</span>
+                timeframe: <span className="text-text-primary">{timeframeSeconds}s</span>
+                <span className="mx-2">|</span>
+                bots: <span className="text-text-primary">{selectedBotIds.length}</span>
               </div>
-            )}
-          </section>
 
+              <div className="mt-3 grid grid-cols-1 gap-2">
+                <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.08em] text-text-secondary">
+                  <span>Start</span>
+                  <span>{replaySpan.startLabel}</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={maxReplayIndex}
+                  value={replayRangeStart}
+                  onChange={(e) => {
+                    const next = Number(e.target.value);
+                    setReplayRangeStart(Math.min(next, replayRangeEnd - 1));
+                  }}
+                  className="w-full accent-[#6366f1]"
+                  disabled={candles.length <= 1}
+                />
+
+                <div className="mt-1 flex items-center justify-between text-[10px] uppercase tracking-[0.08em] text-text-secondary">
+                  <span>End</span>
+                  <span>{replaySpan.endLabel}</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={maxReplayIndex}
+                  value={replayRangeEnd}
+                  onChange={(e) => {
+                    const next = Number(e.target.value);
+                    setReplayRangeEnd(Math.max(next, replayRangeStart + 1));
+                  }}
+                  className="w-full accent-[#22c55e]"
+                  disabled={candles.length <= 1}
+                />
+              </div>
+
+              <div className="mt-3 flex items-center gap-2 rounded-lg border border-border-subtle/70 bg-bg-terminal/50 px-3 py-2">
+                <SlidersHorizontal size={13} className="text-accent" />
+                <span className="text-[11px] text-text-secondary">Speed</span>
+                <input
+                  type="range"
+                  min={0.5}
+                  max={10}
+                  step={0.5}
+                  value={replaySpeed}
+                  onChange={(e) => setReplaySpeed(Number(e.target.value))}
+                  className="flex-1 accent-[#6366f1]"
+                />
+                <span className="text-xs font-mono text-text-primary">{replaySpeed}x</span>
+              </div>
+
+              <div className="mt-2 text-[10px] text-text-secondary font-mono">
+                {replaySpan.valid ? `${replaySpan.points} candles selected` : 'Select a wider range to start replay'}
+              </div>
+
+              <div className="mt-2.5 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={handleLaunchReplayRange}
+                  disabled={replayBusy || !replaySpan.valid || selectedBotIds.length === 0}
+                  className="tv-glass-btn tv-glass-btn-accent py-2.5 text-xs font-semibold uppercase tracking-[0.07em] disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+                >
+                  <Play size={13} />
+                  Launch Replay
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isReplayMode) {
+                      stopReplayMode();
+                    }
+                  }}
+                  disabled={!isReplayMode}
+                  className="tv-glass-btn tv-glass-btn-danger py-2.5 text-xs font-semibold uppercase tracking-[0.07em] disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+                >
+                  <Square size={13} />
+                  Stop Replay
+                </button>
+              </div>
+
+              {isReplayMode && (
+                <div className="mt-2 rounded-lg border border-border-subtle/60 bg-bg-terminal/50 px-3 py-2 text-[10px] font-mono text-text-secondary">
+                  replay progress: {Math.min(replayIndex, replayCandles.length)}/{replayCandles.length}
+                  <button
+                    type="button"
+                    onClick={() => setIsReplaying(!isReplaying)}
+                    className="ml-2 text-accent hover:text-text-primary cursor-pointer"
+                  >
+                    {isReplaying ? 'pause' : 'resume'}
+                  </button>
+                </div>
+              )}
+
+              {backendReplayRunId && (
+                <div className="mt-2 rounded-lg border border-accent/25 bg-accent/10 px-3 py-2 text-[10px] font-mono text-text-secondary">
+                  backend run: <span className="text-text-primary">{backendReplayRunId}</span>
+                  {backendReplayRun ? (
+                    <span>
+                      <span className="mx-2">|</span>
+                      status: <span className="text-text-primary">{backendReplayRun.status}</span>
+                      <span className="mx-2">|</span>
+                      ws clients: <span className="text-text-primary">{backendReplayRun.clients}</span>
+                      <span className="mx-2">|</span>
+                      stream: <span className="text-text-primary">{backendReplayRun.events_sent}/{backendReplayRun.events_total}</span>
+                    </span>
+                  ) : (
+                    <span>
+                      <span className="mx-2">|</span>
+                      status: <span className="text-text-primary">pending</span>
+                    </span>
+                  )}
+                </div>
+              )}
+            </section>
+          )}
+
+          {executionMode === 'live' && (
           <section className={sectionShellClass}>
             <div className="mb-2 flex items-center justify-between">
               <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-text-secondary">Compared Bots KPI</div>
@@ -920,6 +1524,7 @@ export default function BotPanel({ onClose }: { onClose?: () => void }) {
               </div>
             )}
           </section>
+          )}
         </div>
       </div>
 

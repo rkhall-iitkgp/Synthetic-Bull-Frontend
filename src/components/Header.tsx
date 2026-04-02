@@ -485,6 +485,8 @@ export default function Header() {
                             stopReplay();
                             setActiveTool('crosshair');
                         } else {
+                            window.dispatchEvent(new CustomEvent('open-bot-panel'));
+                            window.dispatchEvent(new CustomEvent('open-replay-planner'));
                             setActiveTool('replay');
                         }
                     }}

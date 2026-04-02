@@ -8,6 +8,7 @@ const Terminal = lazy(() => import('./components/Terminal'));
 const Dashboard = lazy(() => import('./components/Dashboard'));
 const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
 const BotDetails = lazy(() => import('./components/BotDetails'));
+const SessionOrchestrator = lazy(() => import('./components/SessionOrchestrator'));
 
 function App() {
   const blobRef = useRef<HTMLDivElement>(null);
@@ -59,6 +60,7 @@ function App() {
                 <Route path="/user/dashboard" element={<Dashboard />} />
                 <Route path="/admin/dashboard" element={<AdminDashboard />} />
                 <Route path="/admin/dashboard/bot/:id" element={<BotDetails />} />
+                <Route path="/admin/sessions" element={<SessionOrchestrator />} />
               </Routes>
             </Suspense>
           </BrowserRouter>
